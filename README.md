@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Postman Clone
 
-## Getting Started
+کلاینت API شبیه Postman با اپ دسکتاپ **Electron** و فرانت **React + Vite**.
 
-First, run the development server:
+---
+
+## نصب و اجرا
+
+### ۱. نصب وابستگی‌ها
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### ۲. اجرای اپ دسکتاپ
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run electron:dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### ۳. اجرای بکند پروکسی (برای ارسال درخواست‌ها)
 
-## Learn More
+در یک ترمینال جدید:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cd proxy-api
+dotnet run
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## اسکریپت‌ها
 
-## Deploy on Vercel
+| دستور | کار |
+|--------|-----|
+| `npm run dev` | فقط فرانت (مرورگر) |
+| `npm run electron:dev` | اپ دسکتاپ Electron |
+| `npm run build` | بیلد فرانت |
+| `npm run electron:build` | بیلد اپ دسکتاپ |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## ساختار پروژه
+
+```
+postman-clone/
+├── electron/          # فایل‌های Electron
+│   ├── main.js
+│   └── preload.js
+├── src/               # سورس React
+│   ├── components/
+│   ├── pages/
+│   ├── App.tsx
+│   └── main.tsx
+├── proxy-api/         # بکند .NET
+└── package.json
+```
+
+---
+
+## رفع مشکل نصب
+
+اگر در نصب مشکل داشتی:
+
+```bash
+npm cache clean --force
+npm install
+```
+
+یا با VPN نصب کن.

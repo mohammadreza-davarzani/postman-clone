@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "Ko5uvhlQ3DM=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\mo.davarzani\\postman-clone\\proxy-api\\ProxyApi.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\mo.davarzani\\.nuget\\packages\\microsoft.aspnetcore.openapi\\10.0.0\\microsoft.aspnetcore.openapi.10.0.0.nupkg.sha512",
+    "C:\\Users\\mo.davarzani\\.nuget\\packages\\microsoft.openapi\\2.0.0\\microsoft.openapi.2.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}
