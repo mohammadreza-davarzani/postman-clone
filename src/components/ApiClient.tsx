@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import Modal, { ModalType } from './Modal';
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
@@ -120,6 +121,38 @@ export default function ApiClient({
     "response" | "code"
   >("response");
   const [copiedCurl, setCopiedCurl] = useState(false);
+
+  // Modal state
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    type: ModalType;
+    title: string;
+    message?: string;
+    variant?: 'danger' | 'primary' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    type: 'alert',
+    title: '',
+    onConfirm: () => {},
+  });
+
+  const showAlert = (title: string, message: string, variant: 'danger' | 'primary' | 'warning' = 'primary') => {
+    setModalState({
+      isOpen: true,
+      type: 'alert',
+      title,
+      message,
+      variant,
+      onConfirm: () => {
+        setModalState((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const closeModal = () => {
+    setModalState((prev) => ({ ...prev, isOpen: false }));
+  };
 
   const [tokenType, setTokenType] = useState<TokenType>("none");
   const [bearerToken, setBearerToken] = useState("");
@@ -255,7 +288,7 @@ export default function ApiClient({
 
   const fetchOAuth2Token = async () => {
     if (!oauth2TokenUrl || !oauth2ClientId || !oauth2ClientSecret) {
-      alert("Please fill in Token URL, Client ID and Client Secret.");
+      showAlert("Missing Information", "Please fill in Token URL, Client ID and Client Secret.", "warning");
       return;
     }
     setOauth2Loading(true);
@@ -274,11 +307,13 @@ export default function ApiClient({
       if (token) {
         setOauth2AccessToken(token);
       } else {
-        alert("Token not received. Response: " + JSON.stringify(data));
+        showAlert("Token Error", "Token not received. Response: " + JSON.stringify(data), "danger");
       }
     } catch (e) {
-      alert(
+      showAlert(
+        "Error",
         "Error fetching token: " + (e instanceof Error ? e.message : String(e)),
+        "danger"
       );
     } finally {
       setOauth2Loading(false);
@@ -1047,6 +1082,17 @@ export default function ApiClient({
           )}
         </div>
       </div>
+
+      {/* Modal */}
+      <Modal
+        isOpen={modalState.isOpen}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        variant={modalState.variant}
+        onConfirm={modalState.onConfirm}
+        onCancel={closeModal}
+      />
     </div>
   );
 }

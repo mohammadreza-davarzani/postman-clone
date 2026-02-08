@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Modal, { ModalType } from './Modal';
 
 export interface Environment {
   id: string;
@@ -103,6 +104,87 @@ export default function Sidebar({
   const [activeView, setActiveView] = useState<'collections' | 'environments' | 'history' | 'flows'>('collections');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Modal states
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    type: ModalType;
+    title: string;
+    message?: string;
+    defaultValue?: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'danger' | 'primary' | 'warning';
+    onConfirm: (value?: string) => void;
+  }>({
+    isOpen: false,
+    type: 'confirm',
+    title: '',
+    onConfirm: () => {},
+  });
+
+  // Helper functions for modals
+  const showConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    variant: 'danger' | 'primary' | 'warning' = 'danger'
+  ) => {
+    setModalState({
+      isOpen: true,
+      type: 'confirm',
+      title,
+      message,
+      confirmText: 'Yes',
+      cancelText: 'Cancel',
+      variant,
+      onConfirm: () => {
+        onConfirm();
+        setModalState((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const showPrompt = (
+    title: string,
+    message: string,
+    onConfirm: (value: string) => void,
+    defaultValue = ''
+  ) => {
+    setModalState({
+      isOpen: true,
+      type: 'prompt',
+      title,
+      message,
+      defaultValue,
+      confirmText: 'OK',
+      cancelText: 'Cancel',
+      variant: 'primary',
+      onConfirm: (value) => {
+        if (value !== undefined) {
+          onConfirm(value);
+        }
+        setModalState((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const showAlert = (title: string, message: string, variant: 'danger' | 'primary' | 'warning' = 'primary') => {
+    setModalState({
+      isOpen: true,
+      type: 'alert',
+      title,
+      message,
+      confirmText: 'OK',
+      variant,
+      onConfirm: () => {
+        setModalState((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const closeModal = () => {
+    setModalState((prev) => ({ ...prev, isOpen: false }));
+  };
 
   // Save collections to localStorage whenever they change
   useEffect(() => {
@@ -218,7 +300,7 @@ export default function Sidebar({
 
       // Validate it's a Postman collection
       if (!json.info || !json.item) {
-        alert('Invalid Postman collection format');
+        showAlert('Import Error', 'Invalid Postman collection format', 'danger');
         return;
       }
 
@@ -232,7 +314,7 @@ export default function Sidebar({
       }
     } catch (error) {
       console.error('Error importing collection:', error);
-      alert('Error importing collection. Please check the file format.');
+      showAlert('Import Error', 'Error importing collection. Please check the file format.', 'danger');
     }
   };
 
@@ -244,15 +326,21 @@ export default function Sidebar({
   const handleDeleteCollection = (collectionId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent triggering the collection selection
 
-    if (confirm('Are you sure you want to delete this collection?')) {
-      const updatedCollections = collections.filter(c => c.id !== collectionId);
-      setCollections(updatedCollections);
+    const collection = collections.find(c => c.id === collectionId);
+    showConfirm(
+      'Delete Collection',
+      `Are you sure you want to delete "${collection?.name}"? This action cannot be undone.`,
+      () => {
+        const updatedCollections = collections.filter(c => c.id !== collectionId);
+        setCollections(updatedCollections);
 
-      // Close collection if it was selected
-      if (selectedCollection === collectionId) {
-        setSelectedCollection(null);
-      }
-    }
+        // Close collection if it was selected
+        if (selectedCollection === collectionId) {
+          setSelectedCollection(null);
+        }
+      },
+      'danger'
+    );
   };
 
   // Generate k6 script from collection
@@ -409,22 +497,27 @@ export default function Sidebar({
     const collection = collections.find(c => c.id === collectionId);
     if (!collection) return;
 
-    const folderName = prompt('Enter folder name:');
-    if (!folderName || !folderName.trim()) return;
+    showPrompt(
+      'Create Folder',
+      'Enter folder name:',
+      (folderName) => {
+        if (!folderName.trim()) return;
 
-    const newFolder: Folder = {
-      id: String(Date.now()),
-      name: folderName.trim(),
-      items: [],
-    };
+        const newFolder: Folder = {
+          id: String(Date.now()),
+          name: folderName.trim(),
+          items: [],
+        };
 
-      const updatedCollections = collections.map(c =>
-      c.id === collectionId
-        ? { ...c, items: [...c.items, newFolder] }
-        : c
+        const updatedCollections = collections.map(c =>
+          c.id === collectionId
+            ? { ...c, items: [...c.items, newFolder] }
+            : c
+        );
+
+        setCollections(updatedCollections);
+      }
     );
-
-    setCollections(updatedCollections);
   };
 
   // Handle folder toggle
@@ -442,31 +535,36 @@ export default function Sidebar({
   const handleDeleteFolder = (collectionId: string, folderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (confirm('Are you sure you want to delete this folder? All requests inside will be moved to the collection root.')) {
-      const collection = collections.find(c => c.id === collectionId);
-      if (!collection) return;
+    const collection = collections.find(c => c.id === collectionId);
+    if (!collection) return;
 
-      const folder = collection.items.find(item => isFolder(item) && item.id === folderId) as Folder | undefined;
-      if (!folder) return;
+    const folder = collection.items.find(item => isFolder(item) && item.id === folderId) as Folder | undefined;
+    if (!folder) return;
 
-      // Move all items from folder to collection root
-      const updatedItems = collection.items
-        .filter(item => !(isFolder(item) && item.id === folderId))
-        .concat(folder.items);
+    showConfirm(
+      'Delete Folder',
+      `Are you sure you want to delete "${folder.name}"? All requests inside will be moved to the collection root.`,
+      () => {
+        // Move all items from folder to collection root
+        const updatedItems = collection.items
+          .filter(item => !(isFolder(item) && item.id === folderId))
+          .concat(folder.items);
 
-      const updatedCollections = collections.map(c =>
-        c.id === collectionId
-          ? { ...c, items: updatedItems }
-          : c
-      );
+        const updatedCollections = collections.map(c =>
+          c.id === collectionId
+            ? { ...c, items: updatedItems }
+            : c
+        );
 
-      setCollections(updatedCollections);
+        setCollections(updatedCollections);
 
-      // Remove from selected folders
-      const newSelectedFolders = new Set(selectedFolders);
-      newSelectedFolders.delete(folderId);
-      setSelectedFolders(newSelectedFolders);
-    }
+        // Remove from selected folders
+        const newSelectedFolders = new Set(selectedFolders);
+        newSelectedFolders.delete(folderId);
+        setSelectedFolders(newSelectedFolders);
+      },
+      'danger'
+    );
   };
 
   // Handle moving request to folder
@@ -877,10 +975,17 @@ export default function Sidebar({
                 <p className="text-sm text-gray-500 mb-3">No environments yet</p>
                 <button
                   onClick={() => {
-                    const name = prompt('Environment name:')?.trim() || 'New Environment';
-                    const id = String(Date.now());
-                    setEnvironments((prev) => [...prev, { id, name, variables: [] }]);
-                    setSelectedEnvironmentId(id);
+                    showPrompt(
+                      'Create Environment',
+                      'Enter environment name:',
+                      (name) => {
+                        const envName = name.trim() || 'New Environment';
+                        const id = String(Date.now());
+                        setEnvironments((prev) => [...prev, { id, name: envName, variables: [] }]);
+                        setSelectedEnvironmentId(id);
+                      },
+                      'New Environment'
+                    );
                   }}
                   className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600"
                 >
@@ -904,10 +1009,17 @@ export default function Sidebar({
                   </select>
                   <button
                     onClick={() => {
-                      const name = prompt('Environment name:')?.trim() || 'New Environment';
-                      const id = String(Date.now());
-                      setEnvironments((prev) => [...prev, { id, name, variables: [] }]);
-                      setSelectedEnvironmentId(id);
+                      showPrompt(
+                        'Create Environment',
+                        'Enter environment name:',
+                        (name) => {
+                          const envName = name.trim() || 'New Environment';
+                          const id = String(Date.now());
+                          setEnvironments((prev) => [...prev, { id, name: envName, variables: [] }]);
+                          setSelectedEnvironmentId(id);
+                        },
+                        'New Environment'
+                      );
                     }}
                     className="px-3 py-2 text-sm text-orange-500 hover:bg-orange-50 rounded-lg font-medium"
                   >
@@ -924,8 +1036,16 @@ export default function Sidebar({
                         <div className="flex gap-1">
                           <button
                             onClick={() => {
-                              const name = prompt('Rename environment:', env.name)?.trim();
-                              if (name) setEnvironments((prev) => prev.map((e) => (e.id === env.id ? { ...e, name } : e)));
+                              showPrompt(
+                                'Rename Environment',
+                                'Enter new name:',
+                                (name) => {
+                                  if (name.trim()) {
+                                    setEnvironments((prev) => prev.map((e) => (e.id === env.id ? { ...e, name: name.trim() } : e)));
+                                  }
+                                },
+                                env.name
+                              );
                             }}
                             className="p-1.5 text-gray-500 hover:bg-gray-200 rounded"
                             title="Rename"
@@ -936,10 +1056,15 @@ export default function Sidebar({
                           </button>
                           <button
                             onClick={() => {
-                              if (confirm('Delete this environment?')) {
-                                setEnvironments((prev) => prev.filter((e) => e.id !== env.id));
-                                if (selectedEnvironmentId === env.id) setSelectedEnvironmentId(null);
-                              }
+                              showConfirm(
+                                'Delete Environment',
+                                `Are you sure you want to delete "${env.name}"?`,
+                                () => {
+                                  setEnvironments((prev) => prev.filter((e) => e.id !== env.id));
+                                  if (selectedEnvironmentId === env.id) setSelectedEnvironmentId(null);
+                                },
+                                'danger'
+                              );
                             }}
                             className="p-1.5 text-red-500 hover:bg-red-50 rounded"
                             title="Delete"
@@ -1022,6 +1147,20 @@ export default function Sidebar({
           </div>
         </div>
       )}
+
+      {/* Modal */}
+      <Modal
+        isOpen={modalState.isOpen}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        defaultValue={modalState.defaultValue}
+        confirmText={modalState.confirmText}
+        cancelText={modalState.cancelText}
+        variant={modalState.variant}
+        onConfirm={modalState.onConfirm}
+        onCancel={closeModal}
+      />
     </div>
   );
 }
