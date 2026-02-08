@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
@@ -55,6 +55,28 @@ function replaceEnvVars(str: string, vars: Record<string, string>): string {
   return str.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
 }
 
+function generateCurlCommand(
+  method: string,
+  url: string,
+  headers: Record<string, string>,
+  body?: string
+): string {
+  let curl = `curl --location --request ${method} '${url}'`;
+
+  Object.entries(headers).forEach(([key, value]) => {
+    if (key && value) {
+      curl += ` \\\n  --header '${key}: ${value}'`;
+    }
+  });
+
+  if (body && method !== 'GET') {
+    const escapedBody = body.replace(/'/g, "'\\''");
+    curl += ` \\\n  --data-raw '${escapedBody}'`;
+  }
+
+  return curl;
+}
+
 const defaultHeaders: Array<{ key: string; value: string }> = [{ key: 'Content-Type', value: 'application/json' }];
 
 function createNewTab(name: string, overrides?: Partial<RequestTabData>): RequestTabData {
@@ -86,6 +108,8 @@ export default function ApiClient({
   const [activeTabId, setActiveTabId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [requestSectionTab, setRequestSectionTab] = useState<'params' | 'headers' | 'body' | 'token'>('headers');
+  const [responseSectionTab, setResponseSectionTab] = useState<'response' | 'code'>('response');
+  const [copiedCurl, setCopiedCurl] = useState(false);
 
   const [tokenType, setTokenType] = useState<TokenType>('none');
   const [bearerToken, setBearerToken] = useState('');
@@ -247,46 +271,70 @@ export default function ApiClient({
     return queryString ? `${base}?${queryString}` : base;
   };
 
+  const buildRequestHeaders = (): Record<string, string> => {
+    const headersObj: Record<string, string> = {};
+    headers.forEach((h) => {
+      if (h.key && h.value) {
+        headersObj[h.key] = replaceEnvVars(h.value, environmentVariables);
+      }
+    });
+
+    if (tokenType === 'bearer' && bearerToken) {
+      headersObj['Authorization'] = `Bearer ${bearerToken}`;
+    } else if (tokenType === 'apiKey' && apiKeyAddTo === 'header' && apiKeyName && apiKeyValue) {
+      headersObj[apiKeyName] = apiKeyValue;
+    } else if (tokenType === 'basic' && (basicUsername || basicPassword)) {
+      const encoded = btoa(unescape(encodeURIComponent(`${basicUsername}:${basicPassword}`)));
+      headersObj['Authorization'] = `Basic ${encoded}`;
+    } else if (tokenType === 'oauth2' && oauth2AccessToken) {
+      headersObj['Authorization'] = `Bearer ${oauth2AccessToken}`;
+    }
+
+    return headersObj;
+  };
+
+  const buildRequestBody = (): string | undefined => {
+    if (method === 'GET' || !body) return undefined;
+
+    const substitutedBody = replaceEnvVars(body, environmentVariables);
+    const headersObj = buildRequestHeaders();
+    const contentType = headersObj['Content-Type'] || headersObj['content-type'] || '';
+    const isJsonContentType = contentType.toLowerCase().includes('application/json');
+
+    if (isJsonContentType) {
+      try {
+        return JSON.stringify(JSON.parse(substitutedBody));
+      } catch {
+        return substitutedBody;
+      }
+    }
+    return substitutedBody;
+  };
+
+  const getCurrentCurl = (): string => {
+    const requestUrl = buildRequestUrl();
+    const headersObj = buildRequestHeaders();
+    const requestBody = buildRequestBody();
+    return generateCurlCommand(method, requestUrl, headersObj, requestBody);
+  };
+
+  const copyCurlToClipboard = () => {
+    const curlCommand = getCurrentCurl();
+    navigator.clipboard.writeText(curlCommand).then(() => {
+      setCopiedCurl(true);
+      setTimeout(() => setCopiedCurl(false), 2000);
+    });
+  };
+
   const sendRequest = async () => {
     setLoading(true);
+    setResponseSectionTab('response');
     const startTime = Date.now();
 
     try {
-      const headersObj: Record<string, string> = {};
-      headers.forEach((h) => {
-        if (h.key && h.value) {
-          headersObj[h.key] = replaceEnvVars(h.value, environmentVariables);
-        }
-      });
-
-      if (tokenType === 'bearer' && bearerToken) {
-        headersObj['Authorization'] = `Bearer ${bearerToken}`;
-      } else if (tokenType === 'apiKey' && apiKeyAddTo === 'header' && apiKeyName && apiKeyValue) {
-        headersObj[apiKeyName] = apiKeyValue;
-      } else if (tokenType === 'basic' && (basicUsername || basicPassword)) {
-        const encoded = btoa(unescape(encodeURIComponent(`${basicUsername}:${basicPassword}`)));
-        headersObj['Authorization'] = `Basic ${encoded}`;
-      } else if (tokenType === 'oauth2' && oauth2AccessToken) {
-        headersObj['Authorization'] = `Bearer ${oauth2AccessToken}`;
-      }
-
+      const headersObj = buildRequestHeaders();
       const requestUrl = buildRequestUrl();
-
-      let requestBody: string | undefined;
-      if (method !== 'GET' && body) {
-        const substitutedBody = replaceEnvVars(body, environmentVariables);
-        const contentType = headersObj['Content-Type'] || headersObj['content-type'] || '';
-        const isJsonContentType = contentType.toLowerCase().includes('application/json');
-        if (isJsonContentType) {
-          try {
-            requestBody = JSON.stringify(JSON.parse(substitutedBody));
-          } catch {
-            requestBody = substitutedBody;
-          }
-        } else {
-          requestBody = substitutedBody;
-        }
-      }
+      const requestBody = buildRequestBody();
 
       const proxyRes = await fetch(`${PROXY_URL}/api/proxy`, {
         method: 'POST',
@@ -694,66 +742,129 @@ export default function ApiClient({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-100/50 p-6">
-        {response ? (
-          <div className="space-y-5">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span
-                className={`px-3 py-1.5 rounded-lg text-sm font-semibold shadow-sm ${
-                  response.status >= 200 && response.status < 300
-                    ? 'bg-green-100 text-green-700'
-                    : response.status >= 400
-                    ? 'bg-red-100 text-red-700'
-                    : 'bg-amber-100 text-amber-700'
-                }`}
-              >
-                {response.status} {response.statusText}
-              </span>
-              <span className="text-sm text-gray-500 font-medium">{response.time}ms</span>
-            </div>
+      <div className="flex-1 flex flex-col overflow-hidden bg-gray-100/50">
+        <div className="border-b border-gray-200 bg-white px-6 py-3">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setResponseSectionTab('response')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                responseSectionTab === 'response'
+                  ? 'text-orange-500 bg-orange-50/80 border-b-2 border-orange-500 -mb-px'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              Response
+            </button>
+            <button
+              onClick={() => setResponseSectionTab('code')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-all ${
+                responseSectionTab === 'code'
+                  ? 'text-orange-500 bg-orange-50/80 border-b-2 border-orange-500 -mb-px'
+                  : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              Code
+            </button>
+          </div>
+        </div>
 
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-2">Headers</h3>
-              <div className="bg-white border border-gray-200/80 rounded-xl p-4 shadow-sm">
-                <pre className="text-xs text-gray-700 overflow-x-auto font-mono">
-                  {JSON.stringify(response.headers, null, 2)}
+        <div className="flex-1 overflow-y-auto p-6">
+          {responseSectionTab === 'response' ? (
+            response ? (
+              <div className="space-y-5">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span
+                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold shadow-sm ${
+                      response.status >= 200 && response.status < 300
+                        ? 'bg-green-100 text-green-700'
+                        : response.status >= 400
+                        ? 'bg-red-100 text-red-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}
+                  >
+                    {response.status} {response.statusText}
+                  </span>
+                  <span className="text-sm text-gray-500 font-medium">{response.time}ms</span>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Headers</h3>
+                  <div className="bg-white border border-gray-200/80 rounded-xl p-4 shadow-sm">
+                    <pre className="text-xs text-gray-700 overflow-x-auto font-mono">
+                      {JSON.stringify(response.headers, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-800 mb-2">Body</h3>
+                  <div className="bg-white border border-gray-200/80 rounded-xl p-4 shadow-sm">
+                    <pre className="text-xs text-gray-700 overflow-x-auto font-mono">
+                      {typeof response.data === 'object' && response.data !== null
+                        ? JSON.stringify(response.data, null, 2)
+                        : typeof response.data === 'string'
+                        ? response.data
+                        : String(response.data ?? '')}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full min-h-[200px]">
+                <div className="text-center px-6 py-10 bg-white/60 rounded-2xl border border-dashed border-gray-200 max-w-sm">
+                  <svg
+                    className="mx-auto h-14 w-14 mb-4 text-gray-300"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <p className="text-sm font-medium text-gray-500">Send a request to see the response here</p>
+                </div>
+              </div>
+            )
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-800">cURL Command</h3>
+                <button
+                  onClick={copyCurlToClipboard}
+                  className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2"
+                >
+                  {copiedCurl ? (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="bg-gray-900 border border-gray-700 rounded-xl p-5 shadow-lg">
+                <pre className="text-sm text-green-400 overflow-x-auto font-mono whitespace-pre-wrap break-all">
+                  {getCurrentCurl()}
                 </pre>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                This command can be run in a terminal to make the same request. Make sure curl is installed on your system.
+              </p>
             </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800 mb-2">Body</h3>
-              <div className="bg-white border border-gray-200/80 rounded-xl p-4 shadow-sm">
-                <pre className="text-xs text-gray-700 overflow-x-auto font-mono">
-                  {typeof response.data === 'object' && response.data !== null
-                    ? JSON.stringify(response.data, null, 2)
-                    : typeof response.data === 'string'
-                    ? response.data
-                    : String(response.data ?? '')}
-                </pre>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full min-h-[200px]">
-            <div className="text-center px-6 py-10 bg-white/60 rounded-2xl border border-dashed border-gray-200 max-w-sm">
-              <svg
-                className="mx-auto h-14 w-14 mb-4 text-gray-300"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              <p className="text-sm font-medium text-gray-500">Send a request to see the response here</p>
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

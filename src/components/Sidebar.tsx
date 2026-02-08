@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export interface Environment {
   id: string;
@@ -116,7 +116,7 @@ export default function Sidebar({
     if (url.raw) {
       return url.raw;
     }
-    
+
     let fullUrl = '';
     if (url.protocol) {
       fullUrl += url.protocol + '://';
@@ -136,7 +136,7 @@ export default function Sidebar({
         fullUrl += '?' + queryString;
       }
     }
-    
+
     return fullUrl || '';
   };
 
@@ -225,7 +225,7 @@ export default function Sidebar({
       const importedCollection = parsePostmanCollection(json);
       const updatedCollections = [...collections, importedCollection];
       setCollections(updatedCollections);
-      
+
       // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -243,16 +243,165 @@ export default function Sidebar({
   // Handle collection deletion
   const handleDeleteCollection = (collectionId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent triggering the collection selection
-    
+
     if (confirm('Are you sure you want to delete this collection?')) {
       const updatedCollections = collections.filter(c => c.id !== collectionId);
       setCollections(updatedCollections);
-      
+
       // Close collection if it was selected
       if (selectedCollection === collectionId) {
         setSelectedCollection(null);
       }
     }
+  };
+
+  // Generate k6 script from collection
+  const generateK6Script = (collection: Collection): string => {
+    let script = `import http from 'k6/http';\nimport { check, sleep } from 'k6';\n\n`;
+    script += `export const options = {\n`;
+    script += `  vus: 10, // Virtual users\n`;
+    script += `  duration: '30s', // Test duration\n`;
+    script += `};\n\n`;
+    
+    script += `export default function () {\n`;
+    
+    const processItems = (items: CollectionItem[], indent = '  ') => {
+      let code = '';
+      items.forEach((item) => {
+        if (isRequest(item)) {
+          const method = item.method.toLowerCase();
+          const url = item.url || '';
+          
+          code += `${indent}// ${item.name}\n`;
+          
+          // Build headers object
+          const headers: Record<string, string> = {};
+          if (item.headers && item.headers.length > 0) {
+            item.headers.forEach(h => {
+              if (h.key && h.value) {
+                headers[h.key] = h.value;
+              }
+            });
+          }
+          
+          const hasHeaders = Object.keys(headers).length > 0;
+          const hasBody = item.body && method !== 'get';
+          
+          if (hasHeaders || hasBody) {
+            code += `${indent}const params${item.id} = {\n`;
+            
+            if (hasHeaders) {
+              code += `${indent}  headers: ${JSON.stringify(headers, null, 2).replace(/\n/g, `\n${indent}  `)},\n`;
+            }
+            
+            code += `${indent}};\n`;
+          }
+          
+          // Build request
+          if (method === 'get' || method === 'delete') {
+            if (hasHeaders) {
+              code += `${indent}const res${item.id} = http.${method}('${url}', params${item.id});\n`;
+            } else {
+              code += `${indent}const res${item.id} = http.${method}('${url}');\n`;
+            }
+          } else if (method === 'post' || method === 'put' || method === 'patch') {
+            const body = item.body || 'null';
+            if (hasHeaders) {
+              code += `${indent}const res${item.id} = http.${method}('${url}', ${JSON.stringify(body)}, params${item.id});\n`;
+            } else {
+              code += `${indent}const res${item.id} = http.${method}('${url}', ${JSON.stringify(body)});\n`;
+            }
+          }
+          
+          // Add check
+          code += `${indent}check(res${item.id}, {\n`;
+          code += `${indent}  '${item.name}: status is 2xx': (r) => r.status >= 200 && r.status < 300,\n`;
+          code += `${indent}});\n\n`;
+        } else if (isFolder(item)) {
+          code += `${indent}// Folder: ${item.name}\n`;
+          code += processItems(item.items, indent);
+        }
+      });
+      return code;
+    };
+    
+    script += processItems(collection.items);
+    script += `  sleep(1);\n`;
+    script += `}\n`;
+    
+    return script;
+  };
+
+  // Handle k6 export
+  const handleExportToK6 = (collectionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    const collection = collections.find(c => c.id === collectionId);
+    if (!collection) return;
+    
+    const k6Script = generateK6Script(collection);
+    const blob = new Blob([k6Script], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${collection.name.replace(/[^a-zA-Z0-9]/g, '_')}_k6.js`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Handle Postman export
+  const handleExportToPostman = (collectionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    const collection = collections.find(c => c.id === collectionId);
+    if (!collection) return;
+    
+    const postmanCollection: PostmanCollection = {
+      info: {
+        name: collection.name,
+        schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+      },
+      item: convertToPostmanItems(collection.items),
+    };
+    
+    const blob = new Blob([JSON.stringify(postmanCollection, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${collection.name.replace(/[^a-zA-Z0-9]/g, '_')}.postman_collection.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Convert collection items to Postman format
+  const convertToPostmanItems = (items: CollectionItem[]): PostmanItem[] => {
+    return items.map((item) => {
+      if (isRequest(item)) {
+        return {
+          name: item.name,
+          request: {
+            method: item.method,
+            header: item.headers?.map(h => ({ key: h.key, value: h.value })) || [],
+            body: item.body ? {
+              mode: 'raw',
+              raw: item.body,
+            } : undefined,
+            url: {
+              raw: item.url,
+            },
+          },
+        };
+      } else {
+        return {
+          name: item.name,
+          item: convertToPostmanItems(item.items),
+        };
+      }
+    });
   };
 
   // Handle folder creation
@@ -269,8 +418,8 @@ export default function Sidebar({
       items: [],
     };
 
-      const updatedCollections = collections.map(c => 
-      c.id === collectionId 
+      const updatedCollections = collections.map(c =>
+      c.id === collectionId
         ? { ...c, items: [...c.items, newFolder] }
         : c
     );
@@ -292,7 +441,7 @@ export default function Sidebar({
   // Handle folder deletion
   const handleDeleteFolder = (collectionId: string, folderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     if (confirm('Are you sure you want to delete this folder? All requests inside will be moved to the collection root.')) {
       const collection = collections.find(c => c.id === collectionId);
       if (!collection) return;
@@ -312,7 +461,7 @@ export default function Sidebar({
       );
 
       setCollections(updatedCollections);
-      
+
       // Remove from selected folders
       const newSelectedFolders = new Set(selectedFolders);
       newSelectedFolders.delete(folderId);
@@ -445,7 +594,7 @@ export default function Sidebar({
       } else {
         // Filter out the current folder and its parent folders from move options
         const availableFolders = allFolders.filter(f => f.id !== item.id);
-        
+
         return (
           <div key={item.id} className="group/item flex items-center gap-1">
             <button
@@ -556,31 +705,11 @@ export default function Sidebar({
             </svg>
             Environments
           </button>
-         
-          
+
+
         </nav>
 
-        {/* Issues Badge */}
-        <div className="p-2 border-t border-gray-200/80">
-          <div className="bg-red-500 text-white rounded-xl px-3 py-2 flex items-center justify-between mb-2 shadow-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded bg-white/20 flex items-center justify-center">
-                <span className="text-xs font-bold">N</span>
-              </div>
-              <span className="text-sm font-medium">28 Issues</span>
-            </div>
-            <button className="text-white/80 hover:text-white">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <button className="w-full flex items-center justify-center p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-md transition-colors">
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-            </svg>
-          </button>
-        </div>
+
       </aside>
 
       {/* Right Content Area - Collections View */}
@@ -678,15 +807,35 @@ export default function Sidebar({
                         </svg>
                         <span className="flex-1">{collection.name}</span>
                       </button>
-                      <button
-                        onClick={(e) => handleDeleteCollection(collection.id, e)}
-                        className="opacity-0 group-hover:opacity-100 p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                        title="Delete Collection"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                        <button
+                          onClick={(e) => handleExportToPostman(collection.id, e)}
+                          className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                          title="Export as Postman Collection"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => handleExportToK6(collection.id, e)}
+                          className="p-2 text-purple-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
+                          title="Export as k6 Script"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteCollection(collection.id, e)}
+                          className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          title="Delete Collection"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                     {selectedCollection === collection.id && (
                       <div className="ml-6 mt-1 space-y-1">
