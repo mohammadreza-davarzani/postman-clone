@@ -10,7 +10,7 @@
         "projectUniqueName": "/Users/mohammad/Desktop/Asa-project/postman-clone/proxy-api/ProxyApi.csproj",
         "projectName": "ProxyApi",
         "projectPath": "/Users/mohammad/Desktop/Asa-project/postman-clone/proxy-api/ProxyApi.csproj",
-        "packagesPath": "/Users/mohammad/.nuget/packages/",
+        "packagesPath": "/var/folders/tr/nh8twt0n0jz31qynljh9kbq00000gn/T/cursor-sandbox-cache/7219f7634554485234a1df09f2e79102/nuget",
         "outputPath": "/Users/mohammad/Desktop/Asa-project/postman-clone/proxy-api/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
@@ -45,9 +45,27 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "dependencies": {
+            "Microsoft.AspNetCore.Authentication.JwtBearer": {
+              "target": "Package",
+              "version": "[9.0.0, )"
+            },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
               "version": "[9.0.0, )"
+            },
+            "Microsoft.EntityFrameworkCore.Design": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[9.0.0, )"
+            },
+            "Pomelo.EntityFrameworkCore.MySql": {
+              "target": "Package",
+              "version": "[9.0.0, )"
+            },
+            "System.IdentityModel.Tokens.Jwt": {
+              "target": "Package",
+              "version": "[8.2.1, )"
             }
           },
           "imports": [

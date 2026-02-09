@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Modal, { ModalType } from './Modal';
+import * as apiService from '../services/apiService';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface Environment {
   id: string;
@@ -81,28 +83,15 @@ export default function Sidebar({
   selectedEnvironmentId = null,
   setSelectedEnvironmentId = () => {},
 }: SidebarProps) {
-  const [collections, setCollections] = useState<Collection[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const saved = localStorage.getItem('postman-collections');
-      if (!saved) return [];
-      const parsed: Array<{ id?: string; name?: string; requests?: CollectionItem[]; items?: CollectionItem[] }> =
-        JSON.parse(saved);
-      return parsed.map((collection) => {
-        if (collection.requests && !collection.items) {
-          return { ...collection, items: collection.requests } as Collection;
-        }
-        return collection as Collection;
-      });
-    } catch {
-      return [];
-    }
-  });
+  const { user } = useAuth();
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [selectedFolders, setSelectedFolders] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [activeView, setActiveView] = useState<'collections' | 'environments' | 'history' | 'flows'>('collections');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isLoadingCollections, setIsLoadingCollections] = useState(false);
+  const [isLoadingEnvironments, setIsLoadingEnvironments] = useState(false);
 
   // Modal states
   const [modalState, setModalState] = useState<{
@@ -186,12 +175,56 @@ export default function Sidebar({
     setModalState((prev) => ({ ...prev, isOpen: false }));
   };
 
-  // Save collections to localStorage whenever they change
+  // Load collections from API when user logs in
   useEffect(() => {
-    if (collections.length > 0) {
-      localStorage.setItem('postman-collections', JSON.stringify(collections));
+    if (user) {
+      loadCollections();
+      loadEnvironments();
     }
-  }, [collections]);
+  }, [user]);
+
+  const loadCollections = async () => {
+    try {
+      setIsLoadingCollections(true);
+      const data = await apiService.fetchCollections();
+      const mapped = data.map((c: { id: number; name: string; items: CollectionItem[] }) => ({
+        id: String(c.id),
+        name: c.name,
+        items: c.items,
+      }));
+      setCollections(mapped);
+    } catch (error) {
+      console.error('Failed to load collections:', error);
+    } finally {
+      setIsLoadingCollections(false);
+    }
+  };
+
+  const loadEnvironments = async () => {
+    try {
+      setIsLoadingEnvironments(true);
+      const data = await apiService.fetchEnvironments();
+      const mapped = data.map((e: { id: number; name: string; variables: Array<{ key: string; value: string }> }) => ({
+        id: String(e.id),
+        name: e.name,
+        variables: e.variables || [],
+      }));
+      setEnvironments(mapped);
+    } catch (error) {
+      console.error('Failed to load environments:', error);
+    } finally {
+      setIsLoadingEnvironments(false);
+    }
+  };
+
+  // Helper to update environment in backend
+  const updateEnvironmentInBackend = async (envId: string, name: string, variables: Array<{ key: string; value: string }>) => {
+    try {
+      await apiService.updateEnvironment(Number(envId), name, variables);
+    } catch (error) {
+      console.error('Failed to update environment:', error);
+    }
+  };
 
   // Parse Postman collection URL
   const parsePostmanUrl = (url: PostmanUrl): string => {
@@ -305,8 +338,16 @@ export default function Sidebar({
       }
 
       const importedCollection = parsePostmanCollection(json);
-      const updatedCollections = [...collections, importedCollection];
-      setCollections(updatedCollections);
+      
+      // Save to backend
+      const saved = await apiService.createCollection(importedCollection.name, importedCollection.items);
+      const newCollection = {
+        id: String(saved.id),
+        name: saved.name,
+        items: saved.items as CollectionItem[],
+      };
+      
+      setCollections([...collections, newCollection]);
 
       // Reset file input
       if (fileInputRef.current) {
@@ -330,13 +371,19 @@ export default function Sidebar({
     showConfirm(
       'Delete Collection',
       `Are you sure you want to delete "${collection?.name}"? This action cannot be undone.`,
-      () => {
-        const updatedCollections = collections.filter(c => c.id !== collectionId);
-        setCollections(updatedCollections);
+      async () => {
+        try {
+          await apiService.deleteCollection(Number(collectionId));
+          const updatedCollections = collections.filter(c => c.id !== collectionId);
+          setCollections(updatedCollections);
 
-        // Close collection if it was selected
-        if (selectedCollection === collectionId) {
-          setSelectedCollection(null);
+          // Close collection if it was selected
+          if (selectedCollection === collectionId) {
+            setSelectedCollection(null);
+          }
+        } catch (error) {
+          console.error('Failed to delete collection:', error);
+          showAlert('Delete Error', 'Failed to delete collection', 'danger');
         }
       },
       'danger'
@@ -500,7 +547,7 @@ export default function Sidebar({
     showPrompt(
       'Create Folder',
       'Enter folder name:',
-      (folderName) => {
+      async (folderName) => {
         if (!folderName.trim()) return;
 
         const newFolder: Folder = {
@@ -509,13 +556,22 @@ export default function Sidebar({
           items: [],
         };
 
-        const updatedCollections = collections.map(c =>
-          c.id === collectionId
-            ? { ...c, items: [...c.items, newFolder] }
-            : c
-        );
+        const updatedItems = [...collection.items, newFolder];
 
-        setCollections(updatedCollections);
+        try {
+          await apiService.updateCollection(Number(collectionId), collection.name, updatedItems);
+          
+          const updatedCollections = collections.map(c =>
+            c.id === collectionId
+              ? { ...c, items: updatedItems }
+              : c
+          );
+
+          setCollections(updatedCollections);
+        } catch (error) {
+          console.error('Failed to create folder:', error);
+          showAlert('Error', 'Failed to create folder', 'danger');
+        }
       }
     );
   };
@@ -544,24 +600,31 @@ export default function Sidebar({
     showConfirm(
       'Delete Folder',
       `Are you sure you want to delete "${folder.name}"? All requests inside will be moved to the collection root.`,
-      () => {
+      async () => {
         // Move all items from folder to collection root
         const updatedItems = collection.items
           .filter(item => !(isFolder(item) && item.id === folderId))
           .concat(folder.items);
 
-        const updatedCollections = collections.map(c =>
-          c.id === collectionId
-            ? { ...c, items: updatedItems }
-            : c
-        );
+        try {
+          await apiService.updateCollection(Number(collectionId), collection.name, updatedItems);
 
-        setCollections(updatedCollections);
+          const updatedCollections = collections.map(c =>
+            c.id === collectionId
+              ? { ...c, items: updatedItems }
+              : c
+          );
 
-        // Remove from selected folders
-        const newSelectedFolders = new Set(selectedFolders);
-        newSelectedFolders.delete(folderId);
-        setSelectedFolders(newSelectedFolders);
+          setCollections(updatedCollections);
+
+          // Remove from selected folders
+          const newSelectedFolders = new Set(selectedFolders);
+          newSelectedFolders.delete(folderId);
+          setSelectedFolders(newSelectedFolders);
+        } catch (error) {
+          console.error('Failed to delete folder:', error);
+          showAlert('Error', 'Failed to delete folder', 'danger');
+        }
       },
       'danger'
     );
@@ -1012,11 +1075,17 @@ export default function Sidebar({
                       showPrompt(
                         'Create Environment',
                         'Enter environment name:',
-                        (name) => {
+                        async (name) => {
                           const envName = name.trim() || 'New Environment';
-                          const id = String(Date.now());
-                          setEnvironments((prev) => [...prev, { id, name: envName, variables: [] }]);
-                          setSelectedEnvironmentId(id);
+                          try {
+                            const saved = await apiService.createEnvironment(envName, []);
+                            const newEnv = { id: String(saved.id), name: saved.name, variables: [] };
+                            setEnvironments((prev) => [...prev, newEnv]);
+                            setSelectedEnvironmentId(String(saved.id));
+                          } catch (error) {
+                            console.error('Failed to create environment:', error);
+                            showAlert('Error', 'Failed to create environment', 'danger');
+                          }
                         },
                         'New Environment'
                       );
@@ -1039,9 +1108,15 @@ export default function Sidebar({
                               showPrompt(
                                 'Rename Environment',
                                 'Enter new name:',
-                                (name) => {
+                                async (name) => {
                                   if (name.trim()) {
-                                    setEnvironments((prev) => prev.map((e) => (e.id === env.id ? { ...e, name: name.trim() } : e)));
+                                    try {
+                                      await apiService.updateEnvironment(Number(env.id), name.trim(), env.variables);
+                                      setEnvironments((prev) => prev.map((e) => (e.id === env.id ? { ...e, name: name.trim() } : e)));
+                                    } catch (error) {
+                                      console.error('Failed to rename environment:', error);
+                                      showAlert('Error', 'Failed to rename environment', 'danger');
+                                    }
                                   }
                                 },
                                 env.name
@@ -1059,9 +1134,15 @@ export default function Sidebar({
                               showConfirm(
                                 'Delete Environment',
                                 `Are you sure you want to delete "${env.name}"?`,
-                                () => {
-                                  setEnvironments((prev) => prev.filter((e) => e.id !== env.id));
-                                  if (selectedEnvironmentId === env.id) setSelectedEnvironmentId(null);
+                                async () => {
+                                  try {
+                                    await apiService.deleteEnvironment(Number(env.id));
+                                    setEnvironments((prev) => prev.filter((e) => e.id !== env.id));
+                                    if (selectedEnvironmentId === env.id) setSelectedEnvironmentId(null);
+                                  } catch (error) {
+                                    console.error('Failed to delete environment:', error);
+                                    showAlert('Error', 'Failed to delete environment', 'danger');
+                                  }
                                 },
                                 'danger'
                               );
@@ -1090,6 +1171,7 @@ export default function Sidebar({
                                 next[i] = { ...next[i], key: e.target.value };
                                 setEnvironments((prev) => prev.map((e) => (e.id === env.id ? { ...e, variables: next } : e)));
                               }}
+                              onBlur={() => updateEnvironmentInBackend(env.id, env.name, env.variables)}
                               placeholder="e.g. baseUrl"
                               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
                             />
@@ -1100,17 +1182,20 @@ export default function Sidebar({
                                 next[i] = { ...next[i], value: e.target.value };
                                 setEnvironments((prev) => prev.map((e) => (e.id === env.id ? { ...e, variables: next } : e)));
                               }}
+                              onBlur={() => updateEnvironmentInBackend(env.id, env.name, env.variables)}
                               placeholder="e.g. https://localhost:7272/api/v1.0"
                               className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white font-mono"
                             />
                             <button
-                              onClick={() =>
+                              onClick={async () => {
+                                const updatedVars = env.variables.filter((_, j) => j !== i);
                                 setEnvironments((prev) =>
                                   prev.map((e) =>
-                                    e.id === env.id ? { ...e, variables: env.variables.filter((_, j) => j !== i) } : e
+                                    e.id === env.id ? { ...e, variables: updatedVars } : e
                                   )
-                                )
-                              }
+                                );
+                                await updateEnvironmentInBackend(env.id, env.name, updatedVars);
+                              }}
                               className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
                             >
                               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1120,11 +1205,13 @@ export default function Sidebar({
                           </div>
                         ))}
                         <button
-                          onClick={() =>
+                          onClick={async () => {
+                            const updatedVars = [...env.variables, { key: '', value: '' }];
                             setEnvironments((prev) =>
-                              prev.map((e) => (e.id === env.id ? { ...e, variables: [...e.variables, { key: '', value: '' }] } : e))
-                            )
-                          }
+                              prev.map((e) => (e.id === env.id ? { ...e, variables: updatedVars } : e))
+                            );
+                            await updateEnvironmentInBackend(env.id, env.name, updatedVars);
+                          }}
                           className="text-sm text-orange-500 hover:text-orange-600 font-medium mt-2"
                         >
                           Add variable
