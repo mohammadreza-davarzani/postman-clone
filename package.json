@@ -41,6 +41,7 @@
       "dist/**/*",
       "electron/**/*"
     ],
+    "publish": null,
     "win": {
       "target": "nsis"
     },
