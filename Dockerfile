@@ -6,8 +6,8 @@ RUN npm install
 
 COPY . .
 
-# API on localhost:5107 (run postman-api separately)
-ENV VITE_PROXY_URL=http://localhost:5107
+# Production API
+ENV VITE_PROXY_URL=https://postwomanbackend.liara.run
 
 RUN npm run build
 

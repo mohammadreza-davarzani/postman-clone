@@ -52,7 +52,7 @@ const PROXY_URL =
     (window as unknown as { __PROXY_URL?: string }).__PROXY_URL) ??
   (typeof import.meta.env?.VITE_PROXY_URL === "string"
     ? import.meta.env.VITE_PROXY_URL
-    : "http://localhost:5107");
+    : "https://postwomanbackend.liara.run");
 
 function replaceEnvVars(str: string, vars: Record<string, string>): string {
   return str.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);

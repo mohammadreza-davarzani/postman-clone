@@ -3,7 +3,7 @@ const PROXY_URL =
     (window as { __PROXY_URL?: string }).__PROXY_URL) ??
   (typeof import.meta.env?.VITE_PROXY_URL === "string"
     ? import.meta.env.VITE_PROXY_URL
-    : "https://postwomanbackend.liara.run/");
+    : "https://postwomanbackend.liara.run");
 
 function getAuthHeaders() {
   const token = localStorage.getItem("auth-token");
