@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Home from './pages/Home';
 import Client from './pages/Client';
+import TryClient from './pages/TryClient';
 import AuthPage from './pages/Auth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -41,15 +42,9 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/auth" element={user ? <Navigate to="/" replace /> : <AuthPage />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Home />
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/" element={<Home />} />
+      <Route path="/try" element={<TryClient />} />
+      <Route path="/auth" element={user ? <Navigate to="/client" replace /> : <AuthPage />} />
       <Route
         path="/client"
         element={

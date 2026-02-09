@@ -1,154 +1,95 @@
-# راهنمای نصب MySQL
+# راهنمای راه‌اندازی دیتابیس از بیخ
 
-## تنظیم Connection String
+## دیتابیس و یوزر جدید
 
-### 1. فایل appsettings.Development.json رو ویرایش کن:
+- **Database:** `postman_clone`
+- **User:** `postman_app`
+- **Password:** خودت انتخاب کن (حداقل ۸ کاراکتر، قوی باشه)
+
+---
+
+## مراحل راه‌اندازی
+
+### ۱. انتخاب پسورد
+
+یه پسورد قوی انتخاب کن و همه‌جایی که `YOUR_NEW_PASSWORD` هست رو عوض کن:
+- فایل `setup-database.sql`
+- فایل‌های `appsettings.json` و `appsettings.Development.json`
+
+### ۲. اجرای اسکریپت MySQL
 
 ```bash
-cd proxy-api
+# لاگین با root و اجرای اسکریپت
+mysql -u root -p < setup-database.sql
 ```
 
-باز کن: `appsettings.Development.json`
+یا داخل MySQL:
 
-Connection string رو با اطلاعات MySQL خودت تغییر بده:
+```bash
+mysql -u root -p
+```
+
+بعد این‌ها رو اجرا کن (رمز root رو می‌پرسه):
+
+```sql
+DROP DATABASE IF EXISTS postman_clone;
+DROP USER IF EXISTS 'postman_app'@'localhost';
+
+CREATE USER 'postman_app'@'localhost' IDENTIFIED BY 'رمز_جدید_تو';
+
+CREATE DATABASE postman_clone 
+  CHARACTER SET utf8mb4 
+  COLLATE utf8mb4_unicode_ci;
+
+GRANT ALL PRIVILEGES ON postman_clone.* TO 'postman_app'@'localhost';
+FLUSH PRIVILEGES;
+exit;
+```
+
+### ۳. آپدیت Connection String
+
+در `proxy-api/appsettings.json` و `appsettings.Development.json` رمز رو تنظیم کن:
 
 ```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Server=localhost;Port=3306;Database=postman_clone;User=root;Password=YOUR_PASSWORD;"
-  }
+"ConnectionStrings": {
+  "DefaultConnection": "Server=localhost;Port=3306;Database=postman_clone;User=postman_app;Password=رمز_تو;"
 }
 ```
 
-جایگزین کن:
-- `YOUR_PASSWORD` → password MySQL خودت
-- اگر port دیگه‌ای داری، `3306` رو تغییر بده
-- اگر username دیگه‌ای داری، `root` رو تغییر بده
-
-### 2. دیتابیس رو بساز (اختیاری)
-
-می‌تونی خودت database بسازی یا بذار Migration خودکار بسازه:
-
-#### روش دستی:
-```sql
-CREATE DATABASE postman_clone CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-#### یا
-Migration خودکار database رو می‌سازه.
-
-### 3. Migration رو اجرا کن:
+### ۴. اجرای Migration
 
 ```bash
 cd proxy-api
+dotnet ef database update
+```
+
+اگه migration نداری:
+
+```bash
 dotnet ef migrations add InitialCreate
 dotnet ef database update
 ```
 
-اگر خطا گرفتی:
-- مطمئن شو MySQL در حال اجرا هست
-- Password رو درست وارد کردی
-- Port درسته (معمولاً 3306)
-- User دسترسی داره
-
-### 4. بک‌اند رو اجرا کن:
+### ۵. اجرای بک‌اند
 
 ```bash
 dotnet run
 ```
 
-## بررسی MySQL
+---
 
-### آیا MySQL نصب و در حال اجراست؟
-
-```bash
-# macOS
-brew services list | grep mysql
-
-# یا
-mysql --version
-```
-
-### اگر نصب نیست:
+## تست اتصال
 
 ```bash
-# macOS
-brew install mysql
-brew services start mysql
-
-# اولین بار که اجرا می‌کنی:
-mysql_secure_installation
+mysql -u postman_app -p postman_clone -e "SHOW TABLES;"
 ```
 
-### Password رو فراموش کردی؟
+اگه جداول رو نشون داد، همه‌چیز درسته.
 
-#### macOS/Linux:
-```bash
-# متوقف کردن MySQL
-brew services stop mysql
+---
 
-# اجرا بدون password
-mysqld_safe --skip-grant-tables &
+## نکات امنیتی
 
-# لاگین بدون password
-mysql -u root
-
-# تغییر password
-ALTER USER 'root'@'localhost' IDENTIFIED BY 'new_password';
-FLUSH PRIVILEGES;
-exit;
-
-# restart MySQL
-brew services restart mysql
-```
-
-## تست Connection
-
-بعد از تنظیم، می‌تونی با این دستور تست کنی:
-
-```bash
-mysql -u root -p -e "SHOW DATABASES;"
-```
-
-باید `postman_clone` رو در لیست ببینی (بعد از migration).
-
-## خطاهای رایج
-
-### 1. Access denied
-- Password اشتباهه
-- User وجود نداره
-- User دسترسی نداره
-
-### 2. Can't connect
-- MySQL در حال اجرا نیست
-- Port اشتباهه
-- Firewall مسدود کرده
-
-### 3. Database doesn't exist
-- Migration رو اجرا نکردی
-- یا دستی database بساز
-
-## اطلاعات پیش‌فرض
-
-```
-Server: localhost
-Port: 3306
-Database: postman_clone
-User: root
-Password: [باید خودت تنظیم کنی]
-```
-
-## بعد از موفقیت
-
-وقتی MySQL به درستی تنظیم شد:
-1. Migration اجرا میشه
-2. Database و جداول ساخته میشن
-3. بک‌اند connect میشه
-4. می‌تونی register/login کنی
-5. داده‌ها permanent ذخیره میشن
-
-## نکته
-
-اگر نمی‌خوای MySQL نصب کنی، می‌تونم به SQLite یا همون In-Memory برگردونم.
-
-بهم بگو کدوم رو ترجیح میدی! 😊
+- رمز `YOUR_NEW_PASSWORD` رو حتماً عوض کن
+- `appsettings.json` رو به git اضافه نکن (اگه رمز داری توش)
+- برای production از متغیر محیطی یا Azure Key Vault استفاده کن

@@ -83,7 +83,7 @@ export default function Sidebar({
   selectedEnvironmentId = null,
   setSelectedEnvironmentId = () => {},
 }: SidebarProps) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [collections, setCollections] = useState<Collection[]>([]);
   const [selectedCollection, setSelectedCollection] = useState<string | null>(null);
   const [selectedFolders, setSelectedFolders] = useState<Set<string>>(new Set());
@@ -116,15 +116,16 @@ export default function Sidebar({
     title: string,
     message: string,
     onConfirm: () => void,
-    variant: 'danger' | 'primary' | 'warning' = 'danger'
+    variant: 'danger' | 'primary' | 'warning' = 'danger',
+    options?: { confirmText?: string; cancelText?: string }
   ) => {
     setModalState({
       isOpen: true,
       type: 'confirm',
       title,
       message,
-      confirmText: 'Yes',
-      cancelText: 'Cancel',
+      confirmText: options?.confirmText ?? 'Yes',
+      cancelText: options?.cancelText ?? 'Cancel',
       variant,
       onConfirm: () => {
         onConfirm();
@@ -870,7 +871,37 @@ export default function Sidebar({
 
         </nav>
 
-
+        {/* User Section - Bottom */}
+        {user && (
+          <div className="mt-auto p-3 border-t border-gray-200/80">
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-linear-to-br from-orange-50 to-amber-50/80 border border-orange-100/60 shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-linear-to-br from-orange-500 to-orange-600 flex items-center justify-center text-white font-semibold text-sm shadow-md shrink-0">
+                {user.name?.charAt(0)?.toUpperCase() || user.email?.charAt(0)?.toUpperCase() || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 truncate">{user.name || 'User'}</p>
+                <p className="text-xs text-gray-500 truncate">{user.email}</p>
+              </div>
+              <button
+                onClick={() =>
+                  showConfirm(
+                    'Logout',
+                    'Are you sure you want to logout?',
+                    logout,
+                    'danger',
+                    { confirmText: 'Logout', cancelText: 'Cancel' }
+                  )
+                }
+                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                title="Logout"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* Right Content Area - Collections View */}

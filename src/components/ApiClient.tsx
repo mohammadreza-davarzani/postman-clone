@@ -49,9 +49,10 @@ interface ApiClientProps {
 
 const PROXY_URL =
   (typeof window !== "undefined" &&
-    (window as unknown as { __PROXY_URL?: string }).__PROXY_URL) ||
-  (import.meta.env?.VITE_PROXY_URL as string | undefined) ||
-  "http://localhost:5107";
+    (window as unknown as { __PROXY_URL?: string }).__PROXY_URL) ??
+  (typeof import.meta.env?.VITE_PROXY_URL === "string"
+    ? import.meta.env.VITE_PROXY_URL
+    : "http://localhost:5107");
 
 function replaceEnvVars(str: string, vars: Record<string, string>): string {
   return str.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);

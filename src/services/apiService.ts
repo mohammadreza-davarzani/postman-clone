@@ -1,7 +1,6 @@
 const PROXY_URL =
-  (typeof window !== 'undefined' && (window as { __PROXY_URL?: string }).__PROXY_URL) ||
-  (import.meta.env?.VITE_PROXY_URL as string | undefined) ||
-  'http://localhost:5107';
+  (typeof window !== 'undefined' && (window as { __PROXY_URL?: string }).__PROXY_URL) ??
+  (typeof import.meta.env?.VITE_PROXY_URL === 'string' ? import.meta.env.VITE_PROXY_URL : 'http://localhost:5107');
 
 function getAuthHeaders() {
   const token = localStorage.getItem('auth-token');

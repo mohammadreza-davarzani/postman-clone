@@ -18,16 +18,16 @@ export default function Home() {
             </p>
             <div className="mt-10 flex items-center justify-center gap-x-6">
               <Link
-                to="/client"
+                to="/auth"
                 className="rounded-md bg-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 transition-colors"
               >
                 Get Started
               </Link>
               <Link
-                to="/client"
+                to="/try"
                 className="text-sm font-semibold leading-6 text-gray-900 hover:text-orange-500 transition-colors"
               >
-                Try API Client <span aria-hidden="true">→</span>
+                Try API Call <span aria-hidden="true">→</span>
               </Link>
             </div>
           </div>
@@ -108,7 +108,7 @@ export default function Home() {
             </p>
             <div className="mt-10 flex items-center justify-center gap-x-6">
               <Link
-                to="/client"
+                to="/auth"
                 className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-orange-500 shadow-sm hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-colors"
               >
                 Get started for free

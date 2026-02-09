@@ -18,14 +18,16 @@ npm install
 npm run electron:dev
 ```
 
-### ۳. اجرای بکند پروکسی (برای ارسال درخواست‌ها)
+### ۳. اجرای بکند API (ریپو جدا: postman-api)
 
-در یک ترمینال جدید:
+در یک ترمینال جدید، از ریپو postman-api:
 
 ```bash
-cd proxy-api
+cd postman-api
 dotnet run
 ```
+
+API: http://localhost:5107
 
 ---
 
@@ -52,7 +54,6 @@ postman-clone/
 │   ├── pages/
 │   ├── App.tsx
 │   └── main.tsx
-├── proxy-api/         # بکند .NET
 └── package.json
 ```
 
@@ -96,6 +97,23 @@ k6 run your_collection_k6.js
 2. دستور cURL رو ببینی
 3. با دکمه **Copy** کپی کنی
 4. در ترمینال اجرا کنی
+
+---
+
+## Docker
+
+**فرانت (این ریپو):**
+```bash
+docker compose up -d --build
+```
+فرانت: http://localhost:3000
+
+**بک‌اند (ریپو postman-api):** باید جداگانه اجرا بشه:
+```bash
+cd postman-api
+docker compose up -d --build
+```
+API: http://localhost:5107
 
 ---
 
