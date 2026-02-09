@@ -1,4 +1,10 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 interface User {
   email: string;
@@ -9,8 +15,15 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  register: (
+    email: string,
+    password: string,
+    name: string,
+  ) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -18,8 +31,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const PROXY_URL =
-  (typeof window !== 'undefined' && (window as { __PROXY_URL?: string }).__PROXY_URL) ??
-  (typeof import.meta.env?.VITE_PROXY_URL === 'string' ? import.meta.env.VITE_PROXY_URL : 'https://postwomanbackend.liara.run');
+  (typeof window !== "undefined" &&
+    (window as { __PROXY_URL?: string }).__PROXY_URL) ??
+  (typeof import.meta.env?.VITE_PROXY_URL === "string"
+    ? import.meta.env.VITE_PROXY_URL
+    : "https://postwomanbackend.liara.run");
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -28,7 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Check for existing token
-    const savedToken = localStorage.getItem('auth-token');
+    const savedToken = localStorage.getItem("auth-token");
     if (savedToken) {
       setToken(savedToken);
       fetchCurrentUser(savedToken);
@@ -41,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch(`${PROXY_URL}/api/auth/me`, {
         headers: {
-          'Authorization': `Bearer ${authToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -50,13 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data);
       } else {
         // Token invalid
-        localStorage.removeItem('auth-token');
+        localStorage.removeItem("auth-token");
         setToken(null);
         setUser(null);
       }
     } catch (error) {
-      console.error('Error fetching user:', error);
-      localStorage.removeItem('auth-token');
+      console.error("Error fetching user:", error);
+      localStorage.removeItem("auth-token");
       setToken(null);
       setUser(null);
     } finally {
@@ -67,9 +83,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       const response = await fetch(`${PROXY_URL}/api/auth/login`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ email, password }),
       });
@@ -77,24 +93,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         setToken(data.token);
-        setUser({ email: data.email, name: data.name, userId: data.userId || '' });
-        localStorage.setItem('auth-token', data.token);
+        setUser({
+          email: data.email,
+          name: data.name,
+          userId: data.userId || "",
+        });
+        localStorage.setItem("auth-token", data.token);
         return { success: true };
       } else {
-        const error = await response.json().catch(() => ({ error: 'Login failed' }));
-        return { success: false, error: error.error || 'Invalid email or password' };
+        const error = await response
+          .json()
+          .catch(() => ({ error: "Login failed" }));
+        return {
+          success: false,
+          error: error.error || "Invalid email or password",
+        };
       }
     } catch (error) {
-      return { success: false, error: 'Network error. Please try again.' };
+      return { success: false, error: "Network error. Please try again." };
     }
   };
 
   const register = async (email: string, password: string, name: string) => {
     try {
       const response = await fetch(`${PROXY_URL}/api/auth/register`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ email, password, name }),
       });
@@ -102,26 +127,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         setToken(data.token);
-        setUser({ email: data.email, name: data.name, userId: data.userId || '' });
-        localStorage.setItem('auth-token', data.token);
+        setUser({
+          email: data.email,
+          name: data.name,
+          userId: data.userId || "",
+        });
+        localStorage.setItem("auth-token", data.token);
         return { success: true };
       } else {
-        const error = await response.json().catch(() => ({ error: 'Registration failed' }));
-        return { success: false, error: error.error || 'Registration failed' };
+        const error = await response
+          .json()
+          .catch(() => ({ error: "Registration failed" }));
+        return { success: false, error: error.error || "Registration failed" };
       }
     } catch (error) {
-      return { success: false, error: 'Network error. Please try again.' };
+      return { success: false, error: "Network error. Please try again." };
     }
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('auth-token');
+    localStorage.removeItem("auth-token");
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, register, logout, isLoading }}>
+    <AuthContext.Provider
+      value={{ user, token, login, register, logout, isLoading }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -130,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }

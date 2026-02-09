@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import Modal, { ModalType } from './Modal';
+import Modal, { ModalType } from "./Modal";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
@@ -129,19 +129,23 @@ export default function ApiClient({
     type: ModalType;
     title: string;
     message?: string;
-    variant?: 'danger' | 'primary' | 'warning';
+    variant?: "danger" | "primary" | "warning";
     onConfirm: () => void;
   }>({
     isOpen: false,
-    type: 'alert',
-    title: '',
+    type: "alert",
+    title: "",
     onConfirm: () => {},
   });
 
-  const showAlert = (title: string, message: string, variant: 'danger' | 'primary' | 'warning' = 'primary') => {
+  const showAlert = (
+    title: string,
+    message: string,
+    variant: "danger" | "primary" | "warning" = "primary",
+  ) => {
     setModalState({
       isOpen: true,
-      type: 'alert',
+      type: "alert",
       title,
       message,
       variant,
@@ -289,7 +293,11 @@ export default function ApiClient({
 
   const fetchOAuth2Token = async () => {
     if (!oauth2TokenUrl || !oauth2ClientId || !oauth2ClientSecret) {
-      showAlert("Missing Information", "Please fill in Token URL, Client ID and Client Secret.", "warning");
+      showAlert(
+        "Missing Information",
+        "Please fill in Token URL, Client ID and Client Secret.",
+        "warning",
+      );
       return;
     }
     setOauth2Loading(true);
@@ -308,13 +316,17 @@ export default function ApiClient({
       if (token) {
         setOauth2AccessToken(token);
       } else {
-        showAlert("Token Error", "Token not received. Response: " + JSON.stringify(data), "danger");
+        showAlert(
+          "Token Error",
+          "Token not received. Response: " + JSON.stringify(data),
+          "danger",
+        );
       }
     } catch (e) {
       showAlert(
         "Error",
         "Error fetching token: " + (e instanceof Error ? e.message : String(e)),
-        "danger"
+        "danger",
       );
     } finally {
       setOauth2Loading(false);
