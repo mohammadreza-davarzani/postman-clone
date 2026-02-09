@@ -956,7 +956,16 @@ export default function Sidebar({
               className="hidden"
             />
 
-            {filteredCollections.length === 0 ? (
+            {isLoadingCollections ? (
+              <div className="text-center py-16 px-6">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 mb-4 animate-pulse">
+                  <svg className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-600">Loading collections...</p>
+              </div>
+            ) : filteredCollections.length === 0 ? (
               <div className="text-center py-16 px-6">
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gray-100 mb-4">
                   <svg
@@ -1064,7 +1073,16 @@ export default function Sidebar({
             <h2 className="text-sm font-semibold text-gray-800">Environments</h2>
           </div>
           <div className="flex-1 overflow-y-auto p-6">
-            {environments.length === 0 ? (
+            {isLoadingEnvironments ? (
+              <div className="text-center py-12">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gray-100 mb-3 animate-pulse">
+                  <svg className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </div>
+                <p className="text-sm text-gray-500">Loading environments...</p>
+              </div>
+            ) : environments.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-sm text-gray-500 mb-3">No environments yet</p>
                 <button
