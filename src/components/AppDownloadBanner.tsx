@@ -10,13 +10,13 @@ const RELEASE_BASE = `https://github.com/mohammadreza-davarzani/postman-clone/re
 const DOWNLOAD_URLS = {
   mac:
     import.meta.env.VITE_DOWNLOAD_URL_MAC ||
-    `${RELEASE_BASE}/Postman%20Clone-${VERSION}-arm64.dmg`,
+    `${RELEASE_BASE}/Postman.Clone-${VERSION}-arm64.dmg`,
   win:
     import.meta.env.VITE_DOWNLOAD_URL_WIN ||
-    `${RELEASE_BASE}/Postman%20Clone%20Setup%20${VERSION}.exe`,
+    `${RELEASE_BASE}/Postman.Clone.Setup.${VERSION}.exe`,
   linux:
     import.meta.env.VITE_DOWNLOAD_URL_LINUX ||
-    `${RELEASE_BASE}/Postman%20Clone-${VERSION}.AppImage`,
+    `${RELEASE_BASE}/Postman.Clone-${VERSION}.AppImage`,
 };
 
 export default function AppDownloadBanner() {
