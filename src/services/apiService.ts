@@ -1,11 +1,14 @@
 const PROXY_URL =
-  (typeof window !== 'undefined' && (window as { __PROXY_URL?: string }).__PROXY_URL) ??
-  (typeof import.meta.env?.VITE_PROXY_URL === 'string' ? import.meta.env.VITE_PROXY_URL : 'http://localhost:5107');
+  (typeof window !== "undefined" &&
+    (window as { __PROXY_URL?: string }).__PROXY_URL) ??
+  (typeof import.meta.env?.VITE_PROXY_URL === "string"
+    ? import.meta.env.VITE_PROXY_URL
+    : "https://postwomanbackend.liara.run/");
 
 function getAuthHeaders() {
-  const token = localStorage.getItem('auth-token');
+  const token = localStorage.getItem("auth-token");
   return {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
@@ -15,36 +18,40 @@ export async function fetchCollections() {
   const response = await fetch(`${PROXY_URL}/api/collections`, {
     headers: getAuthHeaders(),
   });
-  if (!response.ok) throw new Error('Failed to fetch collections');
+  if (!response.ok) throw new Error("Failed to fetch collections");
   return response.json();
 }
 
 export async function createCollection(name: string, items: unknown) {
   const response = await fetch(`${PROXY_URL}/api/collections`, {
-    method: 'POST',
+    method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify({ name, items }),
   });
-  if (!response.ok) throw new Error('Failed to create collection');
+  if (!response.ok) throw new Error("Failed to create collection");
   return response.json();
 }
 
-export async function updateCollection(id: number, name: string, items: unknown) {
+export async function updateCollection(
+  id: number,
+  name: string,
+  items: unknown,
+) {
   const response = await fetch(`${PROXY_URL}/api/collections/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: getAuthHeaders(),
     body: JSON.stringify({ name, items }),
   });
-  if (!response.ok) throw new Error('Failed to update collection');
+  if (!response.ok) throw new Error("Failed to update collection");
   return response.json();
 }
 
 export async function deleteCollection(id: number) {
   const response = await fetch(`${PROXY_URL}/api/collections/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: getAuthHeaders(),
   });
-  if (!response.ok) throw new Error('Failed to delete collection');
+  if (!response.ok) throw new Error("Failed to delete collection");
   return response.json();
 }
 
@@ -53,35 +60,39 @@ export async function fetchEnvironments() {
   const response = await fetch(`${PROXY_URL}/api/environments`, {
     headers: getAuthHeaders(),
   });
-  if (!response.ok) throw new Error('Failed to fetch environments');
+  if (!response.ok) throw new Error("Failed to fetch environments");
   return response.json();
 }
 
 export async function createEnvironment(name: string, variables: unknown) {
   const response = await fetch(`${PROXY_URL}/api/environments`, {
-    method: 'POST',
+    method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify({ name, variables }),
   });
-  if (!response.ok) throw new Error('Failed to create environment');
+  if (!response.ok) throw new Error("Failed to create environment");
   return response.json();
 }
 
-export async function updateEnvironment(id: number, name: string, variables: unknown) {
+export async function updateEnvironment(
+  id: number,
+  name: string,
+  variables: unknown,
+) {
   const response = await fetch(`${PROXY_URL}/api/environments/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     headers: getAuthHeaders(),
     body: JSON.stringify({ name, variables }),
   });
-  if (!response.ok) throw new Error('Failed to update environment');
+  if (!response.ok) throw new Error("Failed to update environment");
   return response.json();
 }
 
 export async function deleteEnvironment(id: number) {
   const response = await fetch(`${PROXY_URL}/api/environments/${id}`, {
-    method: 'DELETE',
+    method: "DELETE",
     headers: getAuthHeaders(),
   });
-  if (!response.ok) throw new Error('Failed to delete environment');
+  if (!response.ok) throw new Error("Failed to delete environment");
   return response.json();
 }
