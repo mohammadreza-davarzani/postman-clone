@@ -22,6 +22,12 @@ export default function Header() {
         </Link>
 
         <div className="flex items-center gap-4">
+          <Link
+            to="/downloads"
+            className="hidden text-sm font-medium text-gray-700 hover:text-orange-500 transition-colors sm:block"
+          >
+            Download
+          </Link>
           {!user ? (
             <>
               <Link

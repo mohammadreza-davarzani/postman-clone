@@ -1,9 +1,11 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import AppDownloadBanner from './components/AppDownloadBanner';
 import Home from './pages/Home';
 import Client from './pages/Client';
 import TryClient from './pages/TryClient';
 import AuthPage from './pages/Auth';
+import Downloads from './pages/Downloads';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -43,6 +45,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/downloads" element={<Downloads />} />
       <Route path="/try" element={<TryClient />} />
       <Route path="/auth" element={user ? <Navigate to="/client" replace /> : <AuthPage />} />
       <Route
@@ -62,6 +65,7 @@ export default function App() {
     <HashRouter>
       <AuthProvider>
         <AppRoutes />
+        <AppDownloadBanner />
       </AuthProvider>
     </HashRouter>
   );

@@ -124,8 +124,8 @@ export default function Home() {
             <div>
               <h3 className="text-sm font-semibold text-gray-900 mb-4">Product</h3>
               <ul className="space-y-2 text-sm text-gray-600">
+                <li><Link to="/downloads" className="hover:text-orange-500 transition-colors">Download App</Link></li>
                 <li><a href="#" className="hover:text-orange-500 transition-colors">Features</a></li>
-                <li><a href="#" className="hover:text-orange-500 transition-colors">Pricing</a></li>
                 <li><a href="#" className="hover:text-orange-500 transition-colors">Documentation</a></li>
               </ul>
             </div>

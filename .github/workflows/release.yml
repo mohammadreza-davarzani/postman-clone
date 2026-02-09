@@ -1,0 +1,101 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+          - platform: mac
+            os: macos-latest
+          - platform: linux
+            os: ubuntu-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm install
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          npm pkg set version="$VERSION"
+
+      - name: Build web
+        run: npm run build
+        env:
+          VITE_PROXY_URL: https://postwomanbackend.liara.run
+          VITE_RELEASE_TAG: ${{ github.ref_name || 'v0.1.0' }}
+
+      - name: Build electron (Windows)
+        if: matrix.platform == 'windows'
+        run: npx electron-builder --win
+
+      - name: Build electron (Mac)
+        if: matrix.platform == 'mac'
+        run: npx electron-builder --mac
+
+      - name: Build electron (Linux)
+        if: matrix.platform == 'linux'
+        run: npx electron-builder --linux
+
+      - name: Upload Windows
+        if: matrix.platform == 'windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: release/*.exe
+
+      - name: Upload Mac
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-build
+          path: release/*.dmg
+
+      - name: Upload Linux
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: release/*.AppImage
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            artifacts/windows-build/*.exe
+            artifacts/mac-build/*.dmg
+            artifacts/linux-build/*.AppImage
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -20,6 +20,9 @@
 # production
 /build
 
+# Electron build output (GitHub Actions builds these)
+/release
+
 # misc
 .DS_Store
 *.pem
