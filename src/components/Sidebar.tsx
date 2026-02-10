@@ -32,13 +32,22 @@ interface Collection {
   items: CollectionItem[];
 }
 
+export type SaveRequestData = {
+  method: string;
+  url: string;
+  headers: Array<{ key: string; value: string }>;
+  body: string;
+  params?: Array<{ key: string; value: string }>;
+};
+
 interface SidebarProps {
   onSelectRequest?: (request: {
     method: string;
     url: string;
     headers: Array<{ key: string; value: string }>;
     body: string;
-  }, collectionName?: string, requestName?: string) => void;
+  }, collectionName?: string, requestName?: string, collectionId?: string, requestId?: string) => void;
+  registerSaveHandler?: (handler: (collectionId: string, requestId: string, data: SaveRequestData) => Promise<void>) => void;
   environments?: Environment[];
   setEnvironments?: (v: Environment[] | ((prev: Environment[]) => Environment[])) => void;
   selectedEnvironmentId?: string | null;
@@ -78,6 +87,7 @@ interface PostmanItem {
 
 export default function Sidebar({
   onSelectRequest,
+  registerSaveHandler,
   environments = [],
   setEnvironments = () => {},
   selectedEnvironmentId = null,
@@ -184,6 +194,31 @@ export default function Sidebar({
       loadEnvironments();
     }
   }, [user]);
+
+  // Register save handler so parent can call it when user clicks Save in ApiClient
+  useEffect(() => {
+    if (!registerSaveHandler) return;
+    registerSaveHandler(async (collectionId: string, requestId: string, data: SaveRequestData) => {
+      const collection = collections.find((c) => c.id === collectionId);
+      if (!collection) throw new Error('Collection not found');
+      const updatedItems = updateItemInItems(collection.items, requestId, (item) => {
+        if (!isRequest(item)) return item;
+        return {
+          ...item,
+          method: data.method,
+          url: data.url,
+          headers: data.headers,
+          body: data.body,
+        };
+      });
+      await apiService.updateCollection(Number(collectionId), collection.name, updatedItems);
+      setCollections((prev) =>
+        prev.map((c) =>
+          c.id === collectionId ? { ...c, items: updatedItems } : c
+        )
+      );
+    });
+  }, [collections, registerSaveHandler]);
 
   const loadCollections = async () => {
     try {
@@ -929,7 +964,7 @@ export default function Sidebar({
                             url: item.url,
                             headers: item.headers || [],
                             body: item.body || '',
-                          }, collection?.name, item.name);
+                          }, collection?.name, item.name, collectionId, item.id);
                         }
                       }}
               className="flex-1 flex items-center gap-2 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-md transition-colors"

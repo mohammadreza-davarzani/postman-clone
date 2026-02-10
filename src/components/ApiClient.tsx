@@ -24,6 +24,8 @@ export interface RequestTabData {
   id: string;
   name: string;
   collectionName?: string;
+  collectionId?: string;
+  requestId?: string;
   method: HttpMethod;
   url: string;
   params: Array<{ key: string; value: string }>;
@@ -41,6 +43,9 @@ interface ApiClientProps {
   };
   selectedRequestName?: string;
   selectedCollectionName?: string;
+  selectedCollectionId?: string;
+  selectedRequestId?: string;
+  onSaveRequest?: (collectionId: string, requestId: string, data: { method: string; url: string; headers: Array<{ key: string; value: string }>; body: string; params: Array<{ key: string; value: string }> }) => Promise<void>;
   environmentVariables?: Record<string, string>;
   environments?: EnvironmentOption[];
   selectedEnvironmentId?: string | null;
@@ -134,6 +139,9 @@ export default function ApiClient({
   selectedRequest,
   selectedRequestName,
   selectedCollectionName,
+  selectedCollectionId,
+  selectedRequestId,
+  onSaveRequest,
   environmentVariables = {},
   environments = [],
   selectedEnvironmentId = null,
@@ -144,6 +152,7 @@ export default function ApiClient({
   ]);
   const [activeTabId, setActiveTabId] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [requestSectionTab, setRequestSectionTab] = useState<
     "params" | "headers" | "body" | "token"
   >("headers");
@@ -239,6 +248,15 @@ export default function ApiClient({
     );
     if (existing) {
       setActiveTabId(existing.id);
+      if (selectedCollectionId && selectedRequestId) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === existing.id
+              ? { ...t, collectionId: selectedCollectionId, requestId: selectedRequestId }
+              : t
+          )
+        );
+      }
       if (selectedRequest.body && selectedRequest.method !== "GET")
         setRequestSectionTab("body");
       else setRequestSectionTab("headers");
@@ -246,6 +264,8 @@ export default function ApiClient({
     }
     const newTab = createNewTab(name, {
       collectionName: selectedCollectionName,
+      collectionId: selectedCollectionId,
+      requestId: selectedRequestId,
       method: selectedRequest.method as HttpMethod,
       url: selectedRequest.url,
       params: [],
@@ -260,7 +280,7 @@ export default function ApiClient({
     if (selectedRequest.body && selectedRequest.method !== "GET")
       setRequestSectionTab("body");
     else setRequestSectionTab("headers");
-  }, [selectedRequest, selectedRequestName, selectedCollectionName]);
+  }, [selectedRequest, selectedRequestName, selectedCollectionName, selectedCollectionId, selectedRequestId]);
 
   const addRequestTab = () => {
     const newTab = createNewTab("New Request");
@@ -438,6 +458,29 @@ export default function ApiClient({
     const headersObj = buildRequestHeaders();
     const requestBody = buildRequestBody();
     return generateCurlCommand(method, requestUrl, headersObj, requestBody);
+  };
+
+  const handleSaveToCollection = async () => {
+    if (!activeTab?.collectionId || !activeTab?.requestId || !onSaveRequest) return;
+    setSaving(true);
+    try {
+      await onSaveRequest(activeTab.collectionId, activeTab.requestId, {
+        method,
+        url,
+        headers,
+        body,
+        params,
+      });
+      showAlert("Saved", "Request changes saved successfully.", "primary");
+    } catch (err) {
+      showAlert(
+        "Save Error",
+        err instanceof Error ? err.message : "Failed to save.",
+        "danger"
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const copyCurlToClipboard = () => {
@@ -673,6 +716,26 @@ export default function ApiClient({
               className="relative w-full min-w-0 px-4 py-2.5 bg-transparent text-transparent caret-gray-900 rounded-lg focus:outline-none font-mono text-sm placeholder:text-transparent"
             />
           </div>
+          {activeTab?.collectionId && activeTab?.requestId && onSaveRequest && (
+            <button
+              type="button"
+              onClick={handleSaveToCollection}
+              disabled={saving || loading}
+              className="px-5 py-2.5 bg-emerald-500 text-white rounded-lg font-medium shadow-sm hover:bg-emerald-600 hover:shadow disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
+              title="Save to collection"
+            >
+              {saving ? (
+                "Saving..."
+              ) : (
+                <>
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                  </svg>
+                  Save
+                </>
+              )}
+            </button>
+          )}
           <button
             onClick={sendRequest}
             disabled={loading}
