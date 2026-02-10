@@ -20,6 +20,15 @@ interface EnvironmentOption {
   variables: Array<{ key: string; value: string }>;
 }
 
+/** Snapshot of request data used to detect unsaved changes */
+export type RequestSavedSnapshot = {
+  method: HttpMethod;
+  url: string;
+  params: Array<{ key: string; value: string }>;
+  headers: Array<{ key: string; value: string }>;
+  body: string;
+};
+
 export interface RequestTabData {
   id: string;
   name: string;
@@ -32,6 +41,8 @@ export interface RequestTabData {
   headers: Array<{ key: string; value: string }>;
   body: string;
   response: ApiResponse | null;
+  /** Last saved state; when different from current, tab is "dirty" */
+  savedState?: RequestSavedSnapshot;
 }
 
 interface ApiClientProps {
@@ -122,17 +133,26 @@ function createNewTab(
   name: string,
   overrides?: Partial<RequestTabData>,
 ): RequestTabData {
-  return {
+  const initial = {
     id: `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     name,
-    method: "GET",
+    method: "GET" as HttpMethod,
     url: "https://jsonplaceholder.typicode.com/posts/1",
-    params: [],
+    params: [] as Array<{ key: string; value: string }>,
     headers: [...defaultHeaders.map((h) => ({ ...h }))],
     body: "",
     response: null,
     ...overrides,
   };
+  const savedState: RequestSavedSnapshot =
+    initial.savedState ?? {
+      method: initial.method,
+      url: initial.url,
+      params: [...(initial.params ?? [])],
+      headers: (initial.headers ?? []).map((h) => ({ ...h })),
+      body: initial.body ?? "",
+    };
+  return { ...initial, savedState };
 }
 
 export default function ApiClient({
@@ -234,15 +254,49 @@ export default function ApiClient({
     );
   }
 
+  function isTabDirty(tab: RequestTabData): boolean {
+    const s = tab.savedState;
+    if (!s) return false;
+    const current = {
+      method: tab.method,
+      url: tab.url,
+      params: tab.params,
+      headers: tab.headers,
+      body: tab.body,
+    };
+    return (
+      s.method !== current.method ||
+      s.url !== current.url ||
+      s.body !== current.body ||
+      JSON.stringify(s.params) !== JSON.stringify(current.params) ||
+      JSON.stringify(s.headers) !== JSON.stringify(current.headers)
+    );
+  }
+
   useEffect(() => {
     if (tabs.length > 0 && !tabs.some((t) => t.id === activeTabId)) {
       setActiveTabId(tabs[0].id);
     }
   }, [tabs, activeTabId]);
 
+  const savedSnapshotFromRequest = (r: ApiClientProps["selectedRequest"]) =>
+    r
+      ? {
+          method: r.method as HttpMethod,
+          url: r.url,
+          params: [] as Array<{ key: string; value: string }>,
+          headers:
+            r.headers.length > 0
+              ? r.headers
+              : defaultHeaders.map((h) => ({ ...h })),
+          body: r.body,
+        }
+      : undefined;
+
   useEffect(() => {
     if (!selectedRequest) return;
     const name = selectedRequestName || "New Request";
+    const snapshot = savedSnapshotFromRequest(selectedRequest);
     const existing = tabs.find(
       (t) => t.name === name && t.url === selectedRequest.url,
     );
@@ -252,7 +306,12 @@ export default function ApiClient({
         setTabs((prev) =>
           prev.map((t) =>
             t.id === existing.id
-              ? { ...t, collectionId: selectedCollectionId, requestId: selectedRequestId }
+              ? {
+                  ...t,
+                  collectionId: selectedCollectionId,
+                  requestId: selectedRequestId,
+                  savedState: snapshot,
+                }
               : t
           )
         );
@@ -274,6 +333,7 @@ export default function ApiClient({
           ? selectedRequest.headers
           : defaultHeaders.map((h) => ({ ...h })),
       body: selectedRequest.body,
+      savedState: snapshot,
     });
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.id);
@@ -471,6 +531,18 @@ export default function ApiClient({
         body,
         params,
       });
+      const newSavedState: RequestSavedSnapshot = {
+        method,
+        url,
+        headers,
+        body,
+        params,
+      };
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === activeTabId ? { ...t, savedState: newSavedState } : t
+        )
+      );
       showAlert("Saved", "Request changes saved successfully.", "primary");
     } catch (err) {
       showAlert(
@@ -582,6 +654,13 @@ export default function ApiClient({
                 />
               </svg>
               <span className="text-sm truncate max-w-[140px]">{tab.name}</span>
+              {isTabDirty(tab) && (
+                <span
+                  className="w-2 h-2 rounded-full bg-orange-500 shrink-0"
+                  title="تغییرات ذخیره نشده"
+                  aria-label="تغییرات ذخیره نشده"
+                />
+              )}
               {tabs.length > 1 && (
                 <button
                   type="button"
