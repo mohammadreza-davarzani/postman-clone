@@ -58,6 +58,35 @@ function replaceEnvVars(str: string, vars: Record<string, string>): string {
   return str.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`);
 }
 
+const VAR_REGEX = /\{\{(\w+)\}\}/g;
+type UrlSegment = { type: "text"; value: string } | { type: "var"; raw: string; key: string; valid: boolean };
+
+function parseUrlSegments(
+  url: string,
+  envVars: Record<string, string>
+): UrlSegment[] {
+  const segments: UrlSegment[] = [];
+  let lastIndex = 0;
+  let m: RegExpExecArray | null;
+  VAR_REGEX.lastIndex = 0;
+  while ((m = VAR_REGEX.exec(url)) !== null) {
+    if (m.index > lastIndex) {
+      segments.push({ type: "text", value: url.slice(lastIndex, m.index) });
+    }
+    const key = m[1];
+    const valid = key in envVars && envVars[key] !== "";
+    segments.push({ type: "var", raw: m[0], key, valid });
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < url.length) {
+    segments.push({ type: "text", value: url.slice(lastIndex) });
+  }
+  if (segments.length === 0 && url) {
+    segments.push({ type: "text", value: url });
+  }
+  return segments;
+}
+
 function generateCurlCommand(
   method: string,
   url: string,
@@ -606,13 +635,44 @@ export default function ApiClient({
             <option value="DELETE">DELETE</option>
             <option value="PATCH">PATCH</option>
           </select>
-          <input
-            type="text"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="Enter request URL"
-            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg text-sm shadow-sm focus:ring-2 focus:ring-orange-500/30 focus:border-orange-400 bg-white transition-all placeholder:text-gray-400"
-          />
+          <div className="flex-1 relative min-w-0 rounded-lg border border-gray-200 bg-white text-sm shadow-sm focus-within:ring-2 focus-within:ring-orange-500/30 focus-within:border-orange-400 transition-all">
+            <div
+              className="absolute inset-0 px-4 py-2.5 pointer-events-none flex items-center overflow-hidden rounded-lg font-mono"
+              aria-hidden
+            >
+              {url ? (
+                parseUrlSegments(url, environmentVariables).map((seg, i) =>
+                  seg.type === "text" ? (
+                    <span key={i} className="text-gray-900 whitespace-pre">
+                      {seg.value}
+                    </span>
+                  ) : (
+                    <span
+                      key={i}
+                      className={`inline-flex items-center rounded px-0.5 border font-medium whitespace-nowrap ${
+                        seg.valid
+                          ? "bg-gray-100 border-blue-400 text-blue-600"
+                          : "bg-red-50/80 border-red-300 text-red-600 border-b-2 border-b-red-500"
+                      }`}
+                    >
+                      <span className="text-gray-800">{`{{`}</span>
+                      <span>{seg.key}</span>
+                      <span className="text-gray-800">{`}}`}</span>
+                    </span>
+                  )
+                )
+              ) : (
+                <span className="text-gray-400">Enter request URL</span>
+              )}
+            </div>
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="Enter request URL"
+              className="relative w-full min-w-0 px-4 py-2.5 bg-transparent text-transparent caret-gray-900 rounded-lg focus:outline-none font-mono text-sm placeholder:text-transparent"
+            />
+          </div>
           <button
             onClick={sendRequest}
             disabled={loading}
