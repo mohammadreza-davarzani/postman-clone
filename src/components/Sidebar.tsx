@@ -90,6 +90,7 @@ export default function Sidebar({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeView, setActiveView] = useState<'collections' | 'environments' | 'history' | 'flows'>('collections');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const envFileInputRef = useRef<HTMLInputElement>(null);
   const [isLoadingCollections, setIsLoadingCollections] = useState(false);
   const [isLoadingEnvironments, setIsLoadingEnvironments] = useState(false);
 
@@ -226,6 +227,46 @@ export default function Sidebar({
       console.error('Failed to update environment:', error);
     }
   };
+
+  // Import environment from JSON (Postman format or { name, variables })
+  const handleImportEnvironment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text) as {
+        name?: string;
+        values?: Array<{ key?: string; value?: string; enabled?: boolean }>;
+        variables?: Array<{ key: string; value: string }>;
+      };
+      const name = json.name?.trim() || file.name.replace(/\.json$/i, '') || 'Imported Environment';
+      const rawList = json.values ?? json.variables ?? [];
+      const variables = rawList
+        .filter((v: { key?: string; value?: string; enabled?: boolean }) => {
+          const enabled = (v as { enabled?: boolean }).enabled !== false;
+          return enabled && (v.key != null || v.value != null);
+        })
+        .map((v: { key?: string; value?: string }) => ({
+          key: String(v.key ?? ''),
+          value: String(v.value ?? ''),
+        }));
+      const saved = await apiService.createEnvironment(name, variables);
+      const newEnv: Environment = {
+        id: String(saved.id),
+        name: saved.name,
+        variables: (saved.variables as Array<{ key: string; value: string }>) ?? variables,
+      };
+      setEnvironments((prev) => [...prev, newEnv]);
+      setSelectedEnvironmentId(String(saved.id));
+      showAlert('Imported', `Environment "${saved.name}" imported with ${variables.length} variable(s).`, 'primary');
+    } catch (err) {
+      console.error('Import environment error:', err);
+      showAlert('Import Error', 'Invalid environment file. Use JSON with name and values/variables.', 'danger');
+    }
+    e.target.value = '';
+  };
+
+  const handleImportEnvironmentClick = () => envFileInputRef.current?.click();
 
   // Parse Postman collection URL
   const parsePostmanUrl = (url: PostmanUrl): string => {
@@ -1209,8 +1250,24 @@ export default function Sidebar({
       {/* Environments View */}
       {activeView === 'environments' && (
         <div className="w-[650px] flex flex-col bg-gray-50/50 overflow-hidden">
-          <div className="border-b border-gray-200/80 bg-white px-6 py-7">
+          <div className="border-b border-gray-200/80 bg-white px-6 py-4 flex items-center justify-between gap-4">
             <h2 className="text-sm font-semibold text-gray-800">Environments</h2>
+            <input
+              ref={envFileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleImportEnvironment}
+              className="hidden"
+            />
+            <button
+              onClick={handleImportEnvironmentClick}
+              className="p-2.5 text-gray-600 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
+              title="Import environment"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto p-6">
             {isLoadingEnvironments ? (
@@ -1230,11 +1287,17 @@ export default function Sidebar({
                     showPrompt(
                       'Create Environment',
                       'Enter environment name:',
-                      (name) => {
+                      async (name) => {
                         const envName = name.trim() || 'New Environment';
-                        const id = String(Date.now());
-                        setEnvironments((prev) => [...prev, { id, name: envName, variables: [] }]);
-                        setSelectedEnvironmentId(id);
+                        try {
+                          const saved = await apiService.createEnvironment(envName, []);
+                          const newEnv = { id: String(saved.id), name: saved.name, variables: (saved.variables as Array<{ key: string; value: string }>) ?? [] };
+                          setEnvironments((prev) => [...prev, newEnv]);
+                          setSelectedEnvironmentId(String(saved.id));
+                        } catch (error) {
+                          console.error('Failed to create environment:', error);
+                          showAlert('Error', 'Failed to create environment', 'danger');
+                        }
                       },
                       'New Environment'
                     );
