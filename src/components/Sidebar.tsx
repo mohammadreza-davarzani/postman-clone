@@ -540,6 +540,31 @@ export default function Sidebar({
     });
   };
 
+  // Create new (empty) collection
+  const handleCreateCollection = () => {
+    showPrompt(
+      'New Collection',
+      'Enter collection name:',
+      async (name) => {
+        const collectionName = name.trim() || 'New Collection';
+        try {
+          const saved = await apiService.createCollection(collectionName, []);
+          const newCollection = {
+            id: String(saved.id),
+            name: saved.name,
+            items: saved.items as CollectionItem[],
+          };
+          setCollections((prev) => [...prev, newCollection]);
+          setSelectedCollection(String(saved.id));
+        } catch (error) {
+          console.error('Failed to create collection:', error);
+          showAlert('Error', 'Failed to create collection', 'danger');
+        }
+      },
+      'New Collection'
+    );
+  };
+
   // Handle folder creation
   const handleCreateFolder = (collectionId: string) => {
     const collection = collections.find(c => c.id === collectionId);
@@ -629,6 +654,92 @@ export default function Sidebar({
       },
       'danger'
     );
+  };
+
+  // Helper: update an item (folder or request) in the tree by id
+  const updateItemInItems = (
+    items: CollectionItem[],
+    itemId: string,
+    update: (item: CollectionItem) => CollectionItem
+  ): CollectionItem[] => {
+    return items.map((item) => {
+      if (item.id === itemId) return update(item);
+      if (isFolder(item)) return { ...item, items: updateItemInItems(item.items, itemId, update) };
+      return item;
+    });
+  };
+
+  const handleRenameCollection = (collectionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const collection = collections.find((c) => c.id === collectionId);
+    if (!collection) return;
+    showPrompt('Rename Collection', 'Enter new name:', async (name) => {
+      const newName = name.trim() || collection.name;
+      if (newName === collection.name) return;
+      try {
+        await apiService.updateCollection(Number(collectionId), newName, collection.items);
+        setCollections((prev) =>
+          prev.map((c) => (c.id === collectionId ? { ...c, name: newName } : c))
+        );
+      } catch (error) {
+        console.error('Failed to rename collection:', error);
+        showAlert('Error', 'Failed to rename collection', 'danger');
+      }
+    }, collection.name);
+  };
+
+  const handleRenameFolder = (collectionId: string, folderId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const collection = collections.find((c) => c.id === collectionId);
+    if (!collection) return;
+    const folder = collection.items.find((item) => isFolder(item) && item.id === folderId) as Folder | undefined;
+    if (!folder) return;
+    showPrompt('Rename Folder', 'Enter new name:', async (name) => {
+      const newName = name.trim() || folder.name;
+      if (newName === folder.name) return;
+      const updatedItems = updateItemInItems(collection.items, folderId, (item) => ({ ...item, name: newName }));
+      try {
+        await apiService.updateCollection(Number(collectionId), collection.name, updatedItems);
+        setCollections((prev) =>
+          prev.map((c) => (c.id === collectionId ? { ...c, items: updatedItems } : c))
+        );
+      } catch (error) {
+        console.error('Failed to rename folder:', error);
+        showAlert('Error', 'Failed to rename folder', 'danger');
+      }
+    }, folder.name);
+  };
+
+  const handleRenameRequest = (collectionId: string, requestId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const collection = collections.find((c) => c.id === collectionId);
+    if (!collection) return;
+    const findRequest = (items: CollectionItem[]): Request | null => {
+      for (const item of items) {
+        if (isRequest(item) && item.id === requestId) return item;
+        if (isFolder(item)) {
+          const found = findRequest(item.items);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const request = findRequest(collection.items);
+    if (!request) return;
+    showPrompt('Rename Request', 'Enter new name:', async (name) => {
+      const newName = name.trim() || request.name;
+      if (newName === request.name) return;
+      const updatedItems = updateItemInItems(collection.items, requestId, (item) => ({ ...item, name: newName }));
+      try {
+        await apiService.updateCollection(Number(collectionId), collection.name, updatedItems);
+        setCollections((prev) =>
+          prev.map((c) => (c.id === collectionId ? { ...c, items: updatedItems } : c))
+        );
+      } catch (error) {
+        console.error('Failed to rename request:', error);
+        showAlert('Error', 'Failed to rename request', 'danger');
+      }
+    }, request.name);
   };
 
   // Handle moving request to folder
@@ -732,6 +843,15 @@ export default function Sidebar({
                 </svg>
               </button>
               <button
+                onClick={(e) => handleRenameFolder(collectionId, item.id, e)}
+                className="opacity-0 group-hover:opacity-100 px-1.5 py-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-50 rounded-md transition-all"
+                title="Rename folder"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+              </button>
+              <button
                 onClick={(e) => handleDeleteFolder(collectionId, item.id, e)}
                 className="opacity-0 group-hover:opacity-100 px-1.5 py-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-md transition-all"
                 title="Delete Folder"
@@ -790,6 +910,15 @@ export default function Sidebar({
                 {item.method}
               </span>
               <span className="truncate flex-1 text-left">{item.name}</span>
+            </button>
+            <button
+              onClick={(e) => handleRenameRequest(collectionId, item.id, e)}
+              className="opacity-0 group-hover/item:opacity-100 p-1.5 text-gray-500 hover:text-orange-500 hover:bg-orange-50 rounded-md transition-all shrink-0"
+              title="Rename request"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
             </button>
             {availableFolders.length > 0 && (
               <select
@@ -911,7 +1040,12 @@ export default function Sidebar({
           <div className="border-b border-gray-200/80 bg-white px-6 py-4 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 flex-1">
-                <button className="p-2 text-gray-500 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors">
+                <button
+                  onClick={handleCreateCollection}
+                  className="p-2 text-gray-500 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
+                  title="New collection"
+                  aria-label="New collection"
+                >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
@@ -930,9 +1064,6 @@ export default function Sidebar({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-colors">
-                  New
-                </button>
                 <button
                   onClick={handleImportClick}
                   className="p-2.5 text-gray-600 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
@@ -1009,6 +1140,15 @@ export default function Sidebar({
                         <span className="flex-1">{collection.name}</span>
                       </button>
                       <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                        <button
+                          onClick={(e) => handleRenameCollection(collection.id, e)}
+                          className="p-2 text-gray-500 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-all"
+                          title="Rename collection"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
                         <button
                           onClick={(e) => handleExportToPostman(collection.id, e)}
                           className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
