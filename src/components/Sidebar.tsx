@@ -399,6 +399,115 @@ export default function Sidebar({
     };
   };
 
+  // Parse OpenAPI/Swagger JSON into a Collection
+  const parseOpenApiCollection = (json: any): Collection => {
+    const idBase = { next: Date.now() };
+    const items: CollectionItem[] = [];
+
+    // Determine base URL
+    const baseUrl = (() => {
+      // OpenAPI 3
+      if (Array.isArray(json?.servers) && json.servers[0]?.url) {
+        return String(json.servers[0].url);
+      }
+      // Swagger 2
+      if (json?.host) {
+        const scheme =
+          (Array.isArray(json.schemes) && json.schemes[0]) || 'https';
+        const basePath = json.basePath || '';
+        return `${scheme}://${json.host}${basePath}`;
+      }
+      return '';
+    })();
+
+    const paths = json?.paths ?? {};
+    const httpMethods = [
+      'get',
+      'post',
+      'put',
+      'delete',
+      'patch',
+      'head',
+      'options',
+    ];
+
+    Object.entries(paths).forEach(([path, pathItem]) => {
+      const pi: any = pathItem;
+      httpMethods.forEach((method) => {
+        const op = pi?.[method];
+        if (!op) return;
+
+        const name =
+          op.summary ||
+          op.operationId ||
+          `${method.toUpperCase()} ${path}`;
+
+        const normalizedBase = baseUrl.replace(/\/$/, '');
+        const normalizedPath = String(path).startsWith('/')
+          ? String(path).slice(1)
+          : String(path);
+        const url = normalizedBase
+          ? `${normalizedBase}/${normalizedPath}`
+          : String(path);
+
+        const headers: Array<{ key: string; value: string }> = [];
+        let body: string | undefined;
+
+        // OpenAPI 3 requestBody
+        const content = op.requestBody?.content;
+        const jsonMedia =
+          content?.['application/json'] ?? content?.['application/*+json'];
+        if (jsonMedia) {
+          headers.push({ key: 'Content-Type', value: 'application/json' });
+          if (jsonMedia.example) {
+            body =
+              typeof jsonMedia.example === 'string'
+                ? jsonMedia.example
+                : JSON.stringify(jsonMedia.example, null, 2);
+          } else if (jsonMedia.schema?.example) {
+            body =
+              typeof jsonMedia.schema.example === 'string'
+                ? jsonMedia.schema.example
+                : JSON.stringify(jsonMedia.schema.example, null, 2);
+          }
+        }
+
+        // Swagger 2 body parameter
+        if (!body && Array.isArray(op.parameters)) {
+          const bodyParam = op.parameters.find(
+            (p: any) => p?.in === 'body' && p?.schema
+          );
+          if (bodyParam) {
+            if (bodyParam.schema.example) {
+              body =
+                typeof bodyParam.schema.example === 'string'
+                  ? bodyParam.schema.example
+                  : JSON.stringify(bodyParam.schema.example, null, 2);
+            } else {
+              body = JSON.stringify(bodyParam.schema, null, 2);
+            }
+            headers.push({ key: 'Content-Type', value: 'application/json' });
+          }
+        }
+
+        items.push({
+          id: String(idBase.next++),
+          name,
+          method: method.toUpperCase(),
+          url,
+          headers: headers.length > 0 ? headers : undefined,
+          body,
+        });
+      });
+    });
+
+    return {
+      id: String(idBase.next++),
+      name: json?.info?.title || 'Imported API',
+      items,
+    };
+  };
+
   // Handle file import
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -406,15 +515,27 @@ export default function Sidebar({
 
     try {
       const text = await file.text();
-      const json: PostmanCollection = JSON.parse(text);
+      const json = JSON.parse(text);
 
-      // Validate it's a Postman collection
-      if (!json.info || !json.item) {
-        showAlert('Import Error', 'Invalid Postman collection format', 'danger');
-        return;
+      let importedCollection: Collection | null = null;
+
+      // Postman collection
+      if (json && json.info && json.item) {
+        importedCollection = parsePostmanCollection(json as PostmanCollection);
+      }
+      // OpenAPI / Swagger
+      else if (json && json.paths) {
+        importedCollection = parseOpenApiCollection(json);
       }
 
-      const importedCollection = parsePostmanCollection(json);
+      if (!importedCollection) {
+        showAlert(
+          'Import Error',
+          'Unsupported file format. Please provide a Postman collection or Swagger/OpenAPI JSON file.',
+          'danger'
+        );
+        return;
+      }
       
       // Save to backend
       const saved = await apiService.createCollection(importedCollection.name, importedCollection.items);
@@ -1040,7 +1161,7 @@ export default function Sidebar({
             <div className="w-9 h-9 rounded-xl bg-linear-to-br from-orange-500 to-orange-600 flex items-center justify-center shadow-md">
               <span className="text-white text-sm font-bold">P</span>
             </div>
-            <span className="text-sm font-semibold text-gray-800">login api</span>
+            <span className="text-sm font-semibold text-gray-800">postwoman</span>
           </div>
         </div>
 
@@ -1143,7 +1264,7 @@ export default function Sidebar({
                 <button
                   onClick={handleImportClick}
                   className="p-2.5 text-gray-600 hover:text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
-                  title="Import collection"
+                  title="Import collection or Swagger/OpenAPI"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
