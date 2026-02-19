@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Modal, { ModalType } from "./Modal";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
@@ -125,6 +125,102 @@ function generateCurlCommand(
   return curl;
 }
 
+/** Parse a cURL command string into method, url, headers, body */
+function parseCurl(curlStr: string): {
+  method: HttpMethod;
+  url: string;
+  headers: Array<{ key: string; value: string }>;
+  body: string;
+} {
+  const trimmed = curlStr.trim();
+  if (!trimmed.toLowerCase().startsWith("curl")) {
+    throw new Error("Not a valid cURL command");
+  }
+  let method: HttpMethod = "GET";
+  let url = "";
+  const headers: Array<{ key: string; value: string }> = [];
+  let body = "";
+
+  // Tokenize: split by spaces but keep quoted strings (single or double)
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < trimmed.length) {
+    while (i < trimmed.length && /\s/.test(trimmed[i])) i++;
+    if (i >= trimmed.length) break;
+    if (trimmed[i] === "'" || trimmed[i] === '"') {
+      const q = trimmed[i];
+      i++;
+      let val = "";
+      while (i < trimmed.length && trimmed[i] !== q) {
+        if (trimmed[i] === "\\") {
+          i++;
+          if (i < trimmed.length) val += trimmed[i++];
+        } else {
+          val += trimmed[i++];
+        }
+      }
+      if (i < trimmed.length) i++;
+      tokens.push(val);
+    } else {
+      let val = "";
+      while (i < trimmed.length && !/\s/.test(trimmed[i])) {
+        val += trimmed[i++];
+      }
+      tokens.push(val);
+    }
+  }
+
+  const hasData = (t: string) =>
+    t === "-d" ||
+    t === "--data" ||
+    t === "--data-raw" ||
+    t === "--data-binary" ||
+    t === "--data-urlencode";
+
+  for (let j = 1; j < tokens.length; j++) {
+    const t = tokens[j];
+    if ((t === "-X" || t === "--request") && tokens[j + 1]) {
+      method = (tokens[j + 1].toUpperCase() as HttpMethod) || "GET";
+      if (["GET", "POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+        j++;
+      }
+    } else if ((t === "-H" || t === "--header") && tokens[j + 1]) {
+      const hv = tokens[j + 1];
+      const colon = hv.indexOf(":");
+      if (colon > 0) {
+        headers.push({
+          key: hv.slice(0, colon).trim(),
+          value: hv.slice(colon + 1).trim(),
+        });
+      }
+      j++;
+    } else if (hasData(t) && tokens[j + 1]) {
+      body = tokens[j + 1];
+      j++;
+    } else if (t === "--url" && tokens[j + 1]) {
+      url = tokens[j + 1];
+      j++;
+    } else if (
+      t.startsWith("http://") ||
+      t.startsWith("https://") ||
+      (t.startsWith("'") && (t.includes("http://") || t.includes("https://")))
+    ) {
+      if (!url) url = t.replace(/^['"]|['"]$/g, "");
+    }
+  }
+
+  if (!url) {
+    throw new Error("URL not found in cURL command");
+  }
+
+  return {
+    method: method || "GET",
+    url,
+    headers: headers.length > 0 ? headers : [...defaultHeaders],
+    body: body || "",
+  };
+}
+
 const defaultHeaders: Array<{ key: string; value: string }> = [
   { key: "Content-Type", value: "application/json" },
 ];
@@ -180,6 +276,9 @@ export default function ApiClient({
     "response" | "code"
   >("response");
   const [copiedCurl, setCopiedCurl] = useState(false);
+  const [importCurlOpen, setImportCurlOpen] = useState(false);
+  const [importCurlText, setImportCurlText] = useState("");
+  const importCurlTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Modal state
   const [modalState, setModalState] = useState<{
@@ -347,6 +446,35 @@ export default function ApiClient({
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.id);
     setRequestSectionTab("headers");
+  };
+
+  const handleImportCurl = () => {
+    const raw = importCurlText.trim();
+    if (!raw) {
+      showAlert("Import cURL", "Paste a cURL command first.", "warning");
+      return;
+    }
+    try {
+      const parsed = parseCurl(raw);
+      const newTab = createNewTab("Imported from cURL", {
+        method: parsed.method,
+        url: parsed.url,
+        headers: parsed.headers,
+        body: parsed.body,
+        params: [],
+      });
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabId(newTab.id);
+      setImportCurlOpen(false);
+      setImportCurlText("");
+      setRequestSectionTab(parsed.body ? "body" : "headers");
+    } catch (e) {
+      showAlert(
+        "Invalid cURL",
+        e instanceof Error ? e.message : "Could not parse cURL command.",
+        "danger"
+      );
+    }
   };
 
   const closeRequestTab = (id: string, e: React.MouseEvent) => {
@@ -686,6 +814,31 @@ export default function ApiClient({
               )}
             </div>
           ))}
+          <button
+            type="button"
+            onClick={() => {
+              setImportCurlOpen(true);
+              setImportCurlText("");
+              setTimeout(() => importCurlTextareaRef.current?.focus(), 100);
+            }}
+            className="p-2 rounded-lg text-gray-500 hover:text-blue-500 hover:bg-blue-50 transition-colors shrink-0"
+            title="Import cURL"
+            aria-label="Import cURL"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
+          </button>
           <button
             type="button"
             onClick={addRequestTab}
@@ -1299,6 +1452,58 @@ export default function ApiClient({
       </div>
 
       {/* Modal */}
+      {/* Import cURL modal */}
+      {importCurlOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => {
+              setImportCurlOpen(false);
+              setImportCurlText("");
+            }}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Import cURL
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Paste your cURL command below
+              </p>
+            </div>
+            <div className="px-6 py-4 flex-1 min-h-0">
+              <textarea
+                ref={importCurlTextareaRef}
+                value={importCurlText}
+                onChange={(e) => setImportCurlText(e.target.value)}
+                placeholder="curl -X GET 'https://api.example.com/...' -H 'Authorization: Bearer ...'"
+                className="w-full h-40 px-4 py-3 border border-gray-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-orange-500 focus:border-orange-500 resize-none"
+                spellCheck={false}
+              />
+            </div>
+            <div className="px-6 py-4 bg-gray-50 rounded-b-2xl flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setImportCurlOpen(false);
+                  setImportCurlText("");
+                }}
+                className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleImportCurl}
+                className="px-4 py-2.5 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600"
+              >
+                Import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Modal
         isOpen={modalState.isOpen}
         type={modalState.type}
